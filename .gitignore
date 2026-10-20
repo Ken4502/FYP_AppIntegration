@@ -1,0 +1,36 @@
+# Flutter / Dart
+**/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.pub-cache/
+**/.pub/
+**/ephemeral/
+
+# Secrets & Private Credentials
+**/serviceAccountKey.json
+**/*.key
+**/*.keystore
+
+# Python & Virtual Environments
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.venv/
+**/venv/
+**/env/
+*.log
+
+# IDE & OS
+**/.idea/
+**/.vscode/
+**/*.iml
+**/.DS_Store
+**/Thumbs.db
+
+# Exclude raw training datasets (artifacts and models are tracked by Git LFS)
+CoreTech/Plant_Disease_Experiment/data/
+CoreTech/Plant_Identification_Experiment/data/
+CoreTech/Plant_Disease/data/
+CoreTech/Plant_Identification/data/

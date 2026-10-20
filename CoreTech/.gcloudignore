@@ -1,0 +1,23 @@
+# .gcloudignore file to keep Cloud Run builds fast and lightweight
+.git/
+.gitignore
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.log
+
+# Exclude training datasets and evaluation benchmarks
+Plant_Disease_Experiment/data/
+Plant_Identification_Experiment/data/
+Plant_Disease_Experiment/reports/
+Plant_Identification_Experiment/reports/
+Plant_Disease/data/
+Plant_Identification/data/
+Plant_Disease/reports/
+Plant_Identification/reports/
+

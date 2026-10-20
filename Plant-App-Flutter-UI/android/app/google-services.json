@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "792382083515",
+    "project_id": "urbangreenfyp",
+    "storage_bucket": "urbangreenfyp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:792382083515:android:63e147e516bd24b887349e",
+        "android_client_info": {
+          "package_name": "urban.green"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "792382083515-djn983h2hb4b1v73por6tlffal6i7iga.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC0wZa7MPnfuXQW-7mPUklBWFVhJoHLo6Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "792382083515-djn983h2hb4b1v73por6tlffal6i7iga.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

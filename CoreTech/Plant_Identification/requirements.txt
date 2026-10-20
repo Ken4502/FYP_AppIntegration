@@ -1,0 +1,18 @@
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+numpy
+pillow
+scikit-learn
+matplotlib
+seaborn
+tqdm
+fastapi
+uvicorn
+python-multipart
+onnx
+opencv-python-headless>=4.8.0
+rembg>=2.0.50
+onnxruntime>=1.16.0
+ultralytics>=8.0.0
+scipy>=1.10.0
