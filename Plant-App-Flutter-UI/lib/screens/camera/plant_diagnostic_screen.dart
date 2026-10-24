@@ -52,6 +52,35 @@ class PlantDiagnosticScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
+            // Non-Plant Notice Banner (if applicable)
+            if (diagnosis?.isPlant == false) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF3E0),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFFFB74D)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Color(0xFFE65100)),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        "Advisory: The AI determined this photo does not contain plant foliage. Pathology results below may not be applicable.",
+                        style: TextStyle(
+                          color: Color(0xFFE65100),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             // Plant & Condition Title
             Row(
               children: [

@@ -25,6 +25,7 @@ from src import config
 from src.predict import diagnose_plant, load_diagnostic_system
 from src.botanical_identifier import identify_botanical_species, map_species_to_disease_group
 from src.abiotic_analyzer import analyze_abiotic_stress
+from src.plant_validator import validate_is_plant
 from web.disease_benchmark import disease_benchmark_manager
 
 app = FastAPI(
@@ -183,6 +184,62 @@ async def api_predict(file: UploadFile = File(...), plant: str = Form("auto")):
         botanical_conf = id_res["confidence"]
         auto_group = id_res["mapped_disease_group"]
         candidates = id_res["candidates"]
+
+        # 1.5. PLANT PRESENCE & OUT-OF-DISTRIBUTION (OOD) VERIFICATION GATE
+        np_img = np.array(pil_img)
+        is_plant, plant_score, plant_msg = validate_is_plant(np_img, botanical_conf)
+        if not is_plant and (plant == "auto" or not plant):
+            inference_time_ms = round((time.time() - t0) * 1000, 1)
+            return {
+                "status": "success",
+                "is_plant": False,
+                "inference_time_ms": inference_time_ms,
+                "disease_available": False,
+                "status_message": plant_msg,
+                "species": {
+                    "name": "Not a Plant",
+                    "confidence": 0.0,
+                    "detected_mode": "Foliar Presence Verification Gate",
+                    "top_candidates": []
+                },
+                "diagnosis": {
+                    "condition_name": "Non-Plant Object Detected",
+                    "category": "Invalid Specimen",
+                    "is_healthy": False,
+                    "confidence": 0.0,
+                    "severity": "None"
+                },
+                "spots": {
+                    "has_spots": False,
+                    "spots_count": 0,
+                    "infected_area_pct": 0.0,
+                    "status_message": "Foliar inspection skipped: image does not contain plant foliage.",
+                    "annotated_image_base64": prep_b64
+                },
+                "care_guide": {
+                    "plant_name": "None",
+                    "condition_name": "No Plant Detected",
+                    "is_healthy": False,
+                    "severity": "None",
+                    "category": "Invalid Specimen",
+                    "summary": f"The AI scanned the image but could not find recognizable plant tissue or foliage. {plant_msg}",
+                    "immediate_actions": [
+                        "Point the camera directly at a plant leaf, stem, or foliage.",
+                        "Ensure the plant fills at least 30-50% of the frame.",
+                        "Check lighting and avoid extreme glare, shadows, or blur."
+                    ],
+                    "treatment": {"organic": [], "chemical": []},
+                    "prevention": [
+                        "Hold your phone steady while taking the photo.",
+                        "Center the plant leaf in the camera viewfinder."
+                    ],
+                    "symptoms": ["Unrecognized background or non-botanical subject."],
+                    "causes": ["Camera aimed at a non-plant subject or out-of-focus background."]
+                },
+                "predictions": [],
+                "abiotic": None,
+                "preprocessed_image_base64": prep_b64
+            }
 
         # Pathology Model baseline group texture voting
         model, classes, spot_detector, kb = load_diagnostic_system()
@@ -468,6 +525,7 @@ async def api_predict(file: UploadFile = File(...), plant: str = Form("auto")):
 
         return {
             "status": "success",
+            "is_plant": True,
             "inference_time_ms": inference_time_ms,
             "disease_available": True,
             "species": {

@@ -1,5 +1,6 @@
 class PlantDiagnosisResponse {
   final String status;
+  final bool isPlant;
   final double inferenceTimeMs;
   final bool diseaseAvailable;
   final SpeciesInfo species;
@@ -14,6 +15,7 @@ class PlantDiagnosisResponse {
 
   PlantDiagnosisResponse({
     required this.status,
+    this.isPlant = true,
     required this.inferenceTimeMs,
     required this.diseaseAvailable,
     required this.species,
@@ -30,6 +32,7 @@ class PlantDiagnosisResponse {
   factory PlantDiagnosisResponse.fromJson(Map<String, dynamic> json) {
     return PlantDiagnosisResponse(
       status: json['status']?.toString() ?? '',
+      isPlant: json['is_plant'] as bool? ?? true,
       inferenceTimeMs: (json['inference_time_ms'] as num?)?.toDouble() ?? 0.0,
       diseaseAvailable: json['disease_available'] as bool? ?? false,
       species: SpeciesInfo.fromJson(json['species'] as Map<String, dynamic>? ?? {}),

@@ -79,7 +79,7 @@ class PlantCaptureResultScreen extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary,
+                        color: diagnosis.isPlant ? theme.colorScheme.primary : const Color(0xFFE65100),
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
@@ -92,10 +92,16 @@ class PlantCaptureResultScreen extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.auto_awesome, color: Colors.white, size: 16),
+                          Icon(
+                            diagnosis.isPlant ? Icons.auto_awesome : Icons.warning_amber_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
                           const SizedBox(width: 6),
                           Text(
-                            '${diagnosis.species.confidence.toStringAsFixed(0)}% AI Match',
+                            diagnosis.isPlant
+                                ? '${diagnosis.species.confidence.toStringAsFixed(0)}% AI Match'
+                                : 'No Plant Detected',
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -119,19 +125,26 @@ class PlantCaptureResultScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    speciesName,
+                    diagnosis.isPlant ? speciesName : "No Plant Detected",
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
+                      color: diagnosis.isPlant ? null : const Color(0xFFD32F2F),
                     ),
                   ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Icon(Icons.spa, size: 16, color: theme.colorScheme.primary),
+                      Icon(
+                        diagnosis.isPlant ? Icons.spa : Icons.info_outline,
+                        size: 16,
+                        color: diagnosis.isPlant ? theme.colorScheme.primary : Colors.grey[600],
+                      ),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          diagnosis.species.detectedMode,
+                          diagnosis.isPlant
+                              ? diagnosis.species.detectedMode
+                              : "No recognizable plant foliage or stem found in this photo",
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: Colors.grey[600],
                             fontStyle: FontStyle.italic,
@@ -147,7 +160,146 @@ class PlantCaptureResultScreen extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            // Health Status Banner Card
+            if (!diagnosis.isPlant) ...[
+              // Non-Plant Warning Card
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: kDefaultPadding),
+                child: Container(
+                  padding: const EdgeInsets.all(kDefaultPadding),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF3E0),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFFFB74D)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      const Icon(
+                        Icons.image_not_supported_outlined,
+                        color: Color(0xFFE65100),
+                        size: 32,
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "Non-Plant Subject Detected",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFE65100),
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              diagnosis.diagnosis.conditionName.isNotEmpty
+                                  ? diagnosis.diagnosis.conditionName
+                                  : "The AI could not identify botanical structures in this image.",
+                              style: const TextStyle(
+                                color: Colors.black87,
+                                fontSize: 13,
+                              ),
+                            ),
+                            if (diagnosis.careGuide.summary.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                diagnosis.careGuide.summary,
+                                style: TextStyle(
+                                  color: Colors.grey[800],
+                                  fontSize: 12,
+                                  height: 1.3,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Tips for Retaking Photo Card
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: kDefaultPadding),
+                child: Container(
+                  padding: const EdgeInsets.all(kDefaultPadding),
+                  decoration: BoxDecoration(
+                    color: theme.cardColor,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.tips_and_updates_outlined, size: 20, color: theme.colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Text(
+                            "Tips for Accurate Plant Diagnosis",
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        "• Center the camera directly on plant leaves, stems, or flowers.\n"
+                        "• Ensure bright, even lighting and minimize glare or shadows.\n"
+                        "• Keep the camera steady to avoid blurriness.\n"
+                        "• Avoid taking photos of background objects, animals, or furniture.",
+                        style: TextStyle(
+                          color: Colors.black87,
+                          height: 1.5,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Retake Photo Button
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: kDefaultPadding),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.camera_alt_outlined),
+                    label: const Text(
+                      "Retake Photo",
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: theme.colorScheme.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+            ] else ...[
+              // Health Status Banner Card
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: kDefaultPadding),
               child: Container(
@@ -323,6 +475,7 @@ class PlantCaptureResultScreen extends StatelessWidget {
 
             const SizedBox(height: 24),
           ],
+        ],
         ),
       ),
     );
