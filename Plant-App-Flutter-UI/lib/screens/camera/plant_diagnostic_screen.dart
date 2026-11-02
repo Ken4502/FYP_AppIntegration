@@ -5,6 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:urbangreen/constants.dart';
 import 'package:urbangreen/models/plant_diagnosis_model.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
+import 'package:urbangreen/models/cart_item_model.dart';
+import 'package:urbangreen/models/cart_model.dart';
+import 'package:urbangreen/models/product_model.dart';
+import 'package:urbangreen/screens/shop/cart_screen.dart';
+
 
 class PlantDiagnosticScreen extends StatelessWidget {
   final XFile? image;
@@ -37,6 +44,52 @@ class PlantDiagnosticScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Plant Pathology Diagnostics"),
+        actions: [
+          Consumer<CartModel>(
+            builder: (context, cart, child) {
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.shopping_cart_outlined),
+                    tooltip: 'View Cart',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const CartScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  if (cart.items.isNotEmpty)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.redAccent,
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                        child: Text(
+                          '${cart.items.length}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(kDefaultPadding),
@@ -297,6 +350,15 @@ class PlantDiagnosticScreen extends StatelessWidget {
               const SizedBox(height: 16),
             ],
 
+            // AI-Prescribed Treatment & Growth Supplies Loop
+            _buildRecommendedSuppliesSection(
+              context,
+              isHealthy: isHealthy,
+              conditionName: conditionName,
+              category: category,
+            ),
+            const SizedBox(height: 20),
+
             // Abiotic Stress Assessment
             if (abiotic != null) ...[
               _buildSectionTitle(context, "Abiotic & Environmental Stress"),
@@ -460,4 +522,325 @@ class PlantDiagnosticScreen extends StatelessWidget {
       return const Color(0xFF10b981);
     }
   }
+
+  Widget _buildRecommendedSuppliesSection(
+    BuildContext context, {
+    required bool isHealthy,
+    required String conditionName,
+    required String category,
+  }) {
+    final theme = Theme.of(context);
+    final title = isHealthy
+        ? "Recommended Nutrition & Maintenance"
+        : "Prescribed Treatments & Supplies";
+    final subtitle = isHealthy
+        ? "Essential organic fertilizers and tools to keep your foliage thriving"
+        : "Targeted bio-controls, treatments, and tools for $conditionName";
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              isHealthy ? Icons.eco : Icons.medical_services_outlined,
+              color: isHealthy ? const Color(0xFF2E7D32) : Colors.redAccent,
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                title,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: isHealthy ? const Color(0xFF2E7D32) : Colors.redAccent,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 230,
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('plant_supplies').snapshots(),
+            builder: (context, snapshot) {
+              List<Product> products = [];
+
+              if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                final all = snapshot.data!.docs
+                    .map((doc) => Product.fromFirestore(doc))
+                    .toList();
+
+                if (!isHealthy) {
+                  final condLower = conditionName.toLowerCase();
+                  products = all.where((p) {
+                    final t = p.type;
+                    final n = p.name.toLowerCase();
+                    final c = p.categories.map((x) => x.toLowerCase()).toList();
+                    return t == 'Pest Control' ||
+                        t == 'Fertilizer' ||
+                        t == 'Tool' ||
+                        c.contains('pest control') ||
+                        c.contains('organic') ||
+                        n.contains('neem') ||
+                        n.contains('fungicide') ||
+                        n.contains('spray') ||
+                        n.contains('prun');
+                  }).toList();
+
+                  products.sort((a, b) {
+                    int scoreA = 0;
+                    int scoreB = 0;
+                    if (condLower.contains('blight') || condLower.contains('spot') || condLower.contains('rust') || condLower.contains('mildew')) {
+                      if (a.name.toLowerCase().contains('fungicide') || a.name.toLowerCase().contains('copper')) scoreA += 5;
+                      if (b.name.toLowerCase().contains('fungicide') || b.name.toLowerCase().contains('copper')) scoreB += 5;
+                    }
+                    if (condLower.contains('mite') || condLower.contains('aphid') || condLower.contains('pest')) {
+                      if (a.name.toLowerCase().contains('neem') || a.type == 'Pest Control') scoreA += 5;
+                      if (b.name.toLowerCase().contains('neem') || b.type == 'Pest Control') scoreB += 5;
+                    }
+                    if (a.type == 'Pest Control') scoreA += 2;
+                    if (b.type == 'Pest Control') scoreB += 2;
+                    return scoreB.compareTo(scoreA);
+                  });
+                } else {
+                  products = all.where((p) {
+                    final t = p.type;
+                    return t == 'Fertilizer' ||
+                        t == 'Soil & Substrate' ||
+                        t == 'Tool' ||
+                        t == 'Pots & Planters';
+                  }).toList();
+                }
+              }
+
+              if (products.isEmpty) {
+                products = isHealthy
+                    ? [
+                        Product(
+                          id: 'fb_f1',
+                          name: 'Organic Seaweed Plant Tonic',
+                          price: 24.50,
+                          imageUrl: 'https://images.unsplash.com/photo-1585336261026-613d9646b9a8?auto=format&fit=crop&w=400&q=80',
+                          type: 'Fertilizer',
+                          categories: ['Organic', 'Fertilizer'],
+                        ),
+                        Product(
+                          id: 'fb_f2',
+                          name: 'Digital Soil Moisture & pH Sensor',
+                          price: 49.90,
+                          imageUrl: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=400&q=80',
+                          type: 'Tool',
+                          categories: ['Smart Garden', 'Sensors'],
+                        ),
+                      ]
+                    : [
+                        Product(
+                          id: 'fb_t1',
+                          name: 'Organic Cold-Pressed Neem Oil Spray',
+                          price: 28.50,
+                          imageUrl: 'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?auto=format&fit=crop&w=400&q=80',
+                          type: 'Pest Control',
+                          categories: ['Organic', 'Pest Control'],
+                        ),
+                        Product(
+                          id: 'fb_t2',
+                          name: 'Liquid Copper Bio-Fungicide',
+                          price: 36.90,
+                          imageUrl: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=400&q=80',
+                          type: 'Pest Control',
+                          categories: ['Treatment', 'Bio-Control'],
+                        ),
+                        Product(
+                          id: 'fb_t3',
+                          name: 'SK-5 Titanium Pruning Shears',
+                          price: 39.90,
+                          imageUrl: 'https://images.unsplash.com/photo-1592417817098-8f3d69109853?auto=format&fit=crop&w=400&q=80',
+                          type: 'Tool',
+                          categories: ['Pruning', 'Hardware'],
+                        ),
+                      ];
+              }
+
+              return ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: products.take(8).length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (context, index) {
+                  final item = products[index];
+                  return _buildProductCard(context, item);
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProductCard(BuildContext context, Product product) {
+    final theme = Theme.of(context);
+    final isNetwork = product.imageUrl.startsWith('http://') || product.imageUrl.startsWith('https://');
+
+    return Container(
+      width: 165,
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                child: SizedBox(
+                  height: 95,
+                  width: double.infinity,
+                  child: isNetwork
+                      ? Image.network(
+                          product.imageUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: Colors.grey.shade200,
+                            child: Icon(Icons.spa, color: Colors.grey.shade400, size: 28),
+                          ),
+                        )
+                      : Image.asset(
+                          product.imageUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: Colors.grey.shade200,
+                            child: Icon(Icons.spa, color: Colors.grey.shade400, size: 28),
+                          ),
+                        ),
+                ),
+              ),
+              Positioned(
+                top: 6,
+                left: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.65),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    product.type,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        product.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'RM ${product.price.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 28,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        backgroundColor: theme.colorScheme.primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onPressed: () {
+                        final cart = Provider.of<CartModel>(context, listen: false);
+                        cart.addItem(
+                          CartItem(
+                            productId: product.id,
+                            name: product.name,
+                            price: product.price,
+                          ),
+                        );
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('${product.name} added to cart!'),
+                            duration: const Duration(seconds: 2),
+                            action: SnackBarAction(
+                              label: 'VIEW CART',
+                              textColor: Colors.amberAccent,
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const CartScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.add_shopping_cart, size: 12),
+                          SizedBox(width: 4),
+                          Text('Add to Cart', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
 }
