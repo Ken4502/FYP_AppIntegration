@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:urbangreen/constants.dart';
 
 class MyBottomNavBar extends StatelessWidget {
@@ -14,52 +13,96 @@ class MyBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final primaryColor = theme.colorScheme.primary;
-    final unselectedColor = theme.bottomNavigationBarTheme.unselectedItemColor;
-
-    Widget buildNavItem(
-        {required String iconPath,
-        required int index,
-        required String label}) {
-      final color = selectedIndex == index ? primaryColor : unselectedColor;
-      return IconButton(
-        icon: SvgPicture.asset(
-          iconPath,
-          colorFilter: ColorFilter.mode(
-            color ?? Colors.grey, // Fallback to grey
-            BlendMode.srcIn,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
           ),
-          semanticsLabel: label,
-        ),
-        onPressed: () => onItemTapped(index),
-      );
-    }
-
-    return BottomAppBar(
-      shape: const CircularNotchedRectangle(),
-      notchMargin: 8.0,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: <Widget>[
-          buildNavItem(
-              iconPath: "assets/icons/flower.svg",
-              index: 0,
-              label: 'Plants Management'),
-          buildNavItem(
-              iconPath: "assets/icons/iot_icon.svg",
-              index: 1,
-              label: 'IoT Management'),
-          const SizedBox(width: kDefaultPaddingExtraLarge), // The space for the FAB
-          buildNavItem(
-              iconPath: "assets/icons/shopping_icon.svg",
-              index: 2,
-              label: 'E-commerce Shop'),
-          buildNavItem(
-              iconPath: "assets/icons/user-icon.svg",
-              index: 3,
-              label: 'Account'),
         ],
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavItem(
+                index: 0,
+                icon: Icons.yard_outlined,
+                activeIcon: Icons.yard,
+                label: 'Garden',
+              ),
+              _buildNavItem(
+                index: 1,
+                icon: Icons.sensors_outlined,
+                activeIcon: Icons.sensors,
+                label: 'Sensors',
+              ),
+              const SizedBox(width: 48), // Space for floating center AI scanner button
+              _buildNavItem(
+                index: 2,
+                icon: Icons.storefront_outlined,
+                activeIcon: Icons.storefront,
+                label: 'Shop',
+              ),
+              _buildNavItem(
+                index: 3,
+                icon: Icons.account_circle_outlined,
+                activeIcon: Icons.account_circle,
+                label: 'Profile',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem({
+    required int index,
+    required IconData icon,
+    required IconData activeIcon,
+    required String label,
+  }) {
+    final isSelected = selectedIndex == index;
+
+    return GestureDetector(
+      onTap: () => onItemTapped(index),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? kAccentMint.withValues(alpha: 0.6) : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isSelected ? activeIcon : icon,
+              size: 22,
+              color: isSelected ? kPrimaryColor : kTextSecondary,
+            ),
+            if (isSelected) ...[
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: kPrimaryColor,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

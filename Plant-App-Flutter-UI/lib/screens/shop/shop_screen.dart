@@ -1,3 +1,4 @@
+import 'package:urbangreen/constants.dart';
 import 'package:urbangreen/screens/shop/cart_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -52,45 +53,90 @@ class ShopScreen extends StatelessWidget {
     return DefaultTabController(
       length: 4,
       child: Scaffold(
+        backgroundColor: kBackgroundColor,
         appBar: AppBar(
-          backgroundColor: Colors.white,
+          backgroundColor: kSurfaceColor,
           elevation: 0,
-          bottom: const TabBar(
-            labelColor: Colors.black,
-            indicatorColor: Colors.green,
-            tabs: [
-              Tab(text: "Plants"),
-              Tab(text: "Equipment"),
-              Tab(text: "Fertilizer"),
-              Tab(text: "IoT"),
-            ],
-          ),
-          title: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: TextField(
+          scrolledUnderElevation: 0,
+          toolbarHeight: 68,
+          titleSpacing: 16,
+          title: Container(
+            height: 42,
+            decoration: BoxDecoration(
+              color: kBackgroundColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: kBorderSubtle),
+            ),
+            child: const TextField(
               decoration: InputDecoration(
-                hintText: "Search products...",
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: Colors.grey[200],
+                hintText: "Search botanicals & gear...",
+                hintStyle: TextStyle(fontSize: 13, color: kTextSecondary),
+                prefixIcon: Icon(Icons.search_rounded, size: 20, color: kPrimaryColor),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               ),
+              style: TextStyle(fontSize: 13, color: kTextPrimary),
             ),
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.shopping_cart, color: Colors.black),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const CartScreen()),
-                );
-              },
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: IconButton(
+                icon: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: kBackgroundColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: kBorderSubtle, width: 1.2),
+                  ),
+                  child: const Icon(Icons.shopping_cart_outlined, color: kTextPrimary, size: 20),
+                ),
+                tooltip: 'Shopping Cart',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const CartScreen()),
+                  );
+                },
+              ),
             ),
           ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(54),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: kBackgroundColor,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: kBorderSubtle),
+              ),
+              child: TabBar(
+                indicatorSize: TabBarIndicatorSize.tab,
+                indicator: BoxDecoration(
+                  color: kPrimaryColor,
+                  borderRadius: BorderRadius.circular(11),
+                  boxShadow: [
+                    BoxShadow(
+                      color: kPrimaryColor.withValues(alpha: 0.2),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                labelColor: Colors.white,
+                unselectedLabelColor: kTextSecondary,
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                tabs: const [
+                  Tab(text: "Plants"),
+                  Tab(text: "Equipment"),
+                  Tab(text: "Fertilizer"),
+                  Tab(text: "IoT"),
+                ],
+              ),
+            ),
+          ),
         ),
         body: TabBarView(
           children: [
@@ -156,7 +202,7 @@ class ShopScreen extends StatelessWidget {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('${product.name} added to cart!'),
-                      duration: const Duration(seconds: 1),
+                      duration: const Duration(seconds: 4),
                     ),
                   );
                 },

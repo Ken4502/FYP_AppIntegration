@@ -34,3 +34,6 @@ CoreTech/Plant_Disease_Experiment/data/
 CoreTech/Plant_Identification_Experiment/data/
 CoreTech/Plant_Disease/data/
 CoreTech/Plant_Identification/data/
+
+*.apk
+

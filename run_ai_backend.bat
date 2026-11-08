@@ -7,5 +7,10 @@ echo.
 echo [*] Changing directory to CoreTech...
 cd /d "%~dp0CoreTech"
 echo [*] Executing CoreTech startup sequence...
-call start.bat
-
+call start.bat %*
+if %errorlevel% neq 0 (
+    echo.
+    echo [!] Server exited or failed to start.
+)
+echo.
+pause

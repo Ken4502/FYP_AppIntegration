@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:urbangreen/components/standard_app_bar.dart';
 import 'package:urbangreen/constants.dart';
 import 'package:urbangreen/models/plant_diagnosis_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -42,53 +43,67 @@ class PlantDiagnosticScreen extends StatelessWidget {
     final coAlerts = diagnosis?.coAlerts ?? [];
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Plant Pathology Diagnostics"),
+      backgroundColor: kBackgroundColor,
+      appBar: StandardAppBar(
+        title: 'Pathology Diagnostics',
+        subtitle: 'AI disease detection & care regimen',
+        toolbarHeight: 68,
         actions: [
           Consumer<CartModel>(
             builder: (context, cart, child) {
-              return Stack(
-                alignment: Alignment.center,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.shopping_cart_outlined),
-                    tooltip: 'View Cart',
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const CartScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  if (cart.items.isNotEmpty)
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: Colors.redAccent,
+              return Padding(
+                padding: const EdgeInsets.only(right: 14),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    IconButton(
+                      icon: Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: kBackgroundColor,
                           shape: BoxShape.circle,
+                          border: Border.all(color: kBorderSubtle, width: 1.2),
                         ),
-                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                        child: Text(
-                          '${cart.items.length}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                        child: const Icon(Icons.shopping_cart_outlined, size: 19, color: kTextPrimary),
+                      ),
+                      tooltip: 'View Cart',
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const CartScreen(),
                           ),
-                          textAlign: TextAlign.center,
+                        );
+                      },
+                    ),
+                    if (cart.items.isNotEmpty)
+                      Positioned(
+                        right: 4,
+                        top: 6,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: kStatusDanger,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                          child: Text(
+                            '${cart.items.length}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               );
             },
           ),
-          const SizedBox(width: 8),
         ],
       ),
       body: SingleChildScrollView(
@@ -162,8 +177,8 @@ class PlantDiagnosticScreen extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: isHealthy
-                        ? const Color(0xFF2E7D32).withOpacity(0.12)
-                        : Colors.redAccent.withOpacity(0.12),
+                        ? const Color(0xFF2E7D32).withValues(alpha: 0.12)
+                        : Colors.redAccent.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -186,9 +201,9 @@ class PlantDiagnosticScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: _parseColor(pdi.colorHex).withOpacity(0.1),
+                  color: _parseColor(pdi.colorHex).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: _parseColor(pdi.colorHex).withOpacity(0.4)),
+                  border: Border.all(color: _parseColor(pdi.colorHex).withValues(alpha: 0.4)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,7 +257,7 @@ class PlantDiagnosticScreen extends StatelessWidget {
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.amber.withOpacity(0.12),
+                    color: Colors.amber.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.amber.shade700),
                   ),
@@ -461,7 +476,7 @@ class PlantDiagnosticScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(15),
         boxShadow: [
           BoxShadow(
-            color: theme.shadowColor.withOpacity(0.06),
+            color: theme.shadowColor.withValues(alpha: 0.06),
             spreadRadius: 1,
             blurRadius: 5,
             offset: const Offset(0, 3),
@@ -489,7 +504,7 @@ class PlantDiagnosticScreen extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 14,
-              backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
+              backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.15),
               child: Text(
                 step,
                 style: TextStyle(
@@ -562,7 +577,7 @@ class PlantDiagnosticScreen extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           subtitle,
-          style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
+          style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade700),
         ),
         const SizedBox(height: 12),
         SizedBox(
@@ -696,7 +711,7 @@ class PlantDiagnosticScreen extends StatelessWidget {
         border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
@@ -737,7 +752,7 @@ class PlantDiagnosticScreen extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.65),
+                    color: Colors.black.withValues(alpha: 0.65),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -802,13 +817,14 @@ class PlantDiagnosticScreen extends StatelessWidget {
                             productId: product.id,
                             name: product.name,
                             price: product.price,
+                            imageUrl: product.imageUrl,
                           ),
                         );
                         ScaffoldMessenger.of(context).hideCurrentSnackBar();
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text('${product.name} added to cart!'),
-                            duration: const Duration(seconds: 2),
+                            duration: const Duration(seconds: 4),
                             action: SnackBarAction(
                               label: 'VIEW CART',
                               textColor: Colors.amberAccent,
@@ -827,9 +843,9 @@ class PlantDiagnosticScreen extends StatelessWidget {
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.add_shopping_cart, size: 12),
+                          Icon(Icons.add_shopping_cart, size: 12, color: Colors.white),
                           SizedBox(width: 4),
-                          Text('Add to Cart', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          Text('Add to Cart', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
                         ],
                       ),
                     ),

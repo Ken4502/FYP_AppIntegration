@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:urbangreen/constants.dart';
 import 'package:urbangreen/models/plant_diagnosis_model.dart';
+import 'package:urbangreen/models/plant_model.dart';
 import 'package:urbangreen/screens/camera/plant_diagnostic_screen.dart';
-import 'package:urbangreen/screens/garden/add_plant_screen.dart';
+import 'package:urbangreen/services/plant_service.dart';
 
-class PlantCaptureResultScreen extends StatelessWidget {
+class PlantCaptureResultScreen extends StatefulWidget {
   final XFile image;
   final PlantDiagnosisResponse diagnosis;
 
@@ -17,17 +18,208 @@ class PlantCaptureResultScreen extends StatelessWidget {
   });
 
   @override
+  State<PlantCaptureResultScreen> createState() => _PlantCaptureResultScreenState();
+}
+
+class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
+  bool _isAdded = false;
+
+  void _showAddToGardenSheet(BuildContext context) {
+    final speciesName = widget.diagnosis.species.name.replaceAll('_', ' ');
+    final conditionName = widget.diagnosis.diagnosis.conditionName.replaceAll('_', ' ');
+    final isHealthy = widget.diagnosis.diagnosis.isHealthy;
+    final nameController = TextEditingController(text: 'My $speciesName');
+    final notesController = TextEditingController(
+      text: widget.diagnosis.careGuide.summary.isNotEmpty
+          ? widget.diagnosis.careGuide.summary
+          : 'Identified via AI diagnosis: $conditionName.',
+    );
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.file(
+                      File(widget.image.path),
+                      width: 60,
+                      height: 60,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        width: 60,
+                        height: 60,
+                        color: kPrimaryColor.withValues(alpha: 0.1),
+                        child: const Icon(Icons.eco, color: kPrimaryColor),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Add to Garden',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kTextPrimary),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: kPrimaryColor.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  speciesName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: kPrimaryColor),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: isHealthy
+                                    ? const Color(0xFF2E7D32).withValues(alpha: 0.1)
+                                    : const Color(0xFFD32F2F).withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                isHealthy ? 'Healthy' : conditionName,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: isHealthy ? const Color(0xFF2E7D32) : const Color(0xFFD32F2F),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              TextField(
+                controller: nameController,
+                decoration: InputDecoration(
+                  labelText: 'Plant Nickname',
+                  hintText: 'e.g. My $speciesName',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  prefixIcon: const Icon(Icons.drive_file_rename_outline_rounded, color: kPrimaryColor),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: notesController,
+                maxLines: 2,
+                decoration: InputDecoration(
+                  labelText: 'Care Notes / Pathology',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  prefixIcon: const Icon(Icons.notes_rounded, color: kPrimaryColor),
+                ),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.check_circle_rounded, color: Colors.white),
+                label: const Text(
+                  'Confirm & Save to Garden',
+                  style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kPrimaryColor,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () {
+                  final newPlant = Plant(
+                    id: DateTime.now().millisecondsSinceEpoch.toString(),
+                    name: nameController.text.trim().isNotEmpty
+                        ? nameController.text.trim()
+                        : speciesName,
+                    species: speciesName,
+                    imageUrl: widget.image.path,
+                    description: notesController.text.trim().isNotEmpty
+                        ? notesController.text.trim()
+                        : (widget.diagnosis.careGuide.summary.isNotEmpty
+                            ? widget.diagnosis.careGuide.summary
+                            : 'Diagnosed as $conditionName.'),
+                  );
+
+                  PlantService().addPlant(newPlant);
+                  Navigator.pop(ctx);
+
+                  setState(() {
+                    _isAdded = true;
+                  });
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('🌿 Added "${newPlant.name}" to your Garden!'),
+                      backgroundColor: kPrimaryColor,
+                      behavior: SnackBarBehavior.floating,
+                      action: SnackBarAction(
+                        label: 'View Garden',
+                        textColor: Colors.white,
+                        onPressed: () {
+                          Navigator.popUntil(context, (route) => route.isFirst);
+                        },
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final theme = Theme.of(context);
+    final diagnosis = widget.diagnosis;
+    final image = widget.image;
     final isHealthy = diagnosis.diagnosis.isHealthy;
     final speciesName = diagnosis.species.name.replaceAll('_', ' ');
     final conditionName = diagnosis.diagnosis.conditionName.replaceAll('_', ' ');
 
     final healthColor = isHealthy ? const Color(0xFF2E7D32) : const Color(0xFFD32F2F);
     final healthBgColor = isHealthy
-        ? const Color(0xFF2E7D32).withOpacity(0.12)
-        : const Color(0xFFD32F2F).withOpacity(0.12);
+        ? const Color(0xFF2E7D32).withValues(alpha: 0.12)
+        : const Color(0xFFD32F2F).withValues(alpha: 0.12);
 
     return Scaffold(
       body: SingleChildScrollView(
@@ -50,7 +242,7 @@ class PlantCaptureResultScreen extends StatelessWidget {
                         BoxShadow(
                           offset: const Offset(0, 10),
                           blurRadius: 30,
-                          color: theme.colorScheme.primary.withOpacity(0.2),
+                          color: theme.colorScheme.primary.withValues(alpha: 0.2),
                         ),
                       ],
                       image: DecorationImage(
@@ -65,7 +257,7 @@ class PlantCaptureResultScreen extends StatelessWidget {
                     top: 50,
                     left: 20,
                     child: CircleAvatar(
-                      backgroundColor: Colors.black.withOpacity(0.5),
+                      backgroundColor: Colors.black.withValues(alpha: 0.5),
                       child: IconButton(
                         icon: const Icon(Icons.arrow_back, color: Colors.white),
                         onPressed: () => Navigator.pop(context),
@@ -83,7 +275,7 @@ class PlantCaptureResultScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.25),
+                            color: Colors.black.withValues(alpha: 0.25),
                             blurRadius: 8,
                             offset: const Offset(0, 4),
                           ),
@@ -137,7 +329,7 @@ class PlantCaptureResultScreen extends StatelessWidget {
                       Icon(
                         diagnosis.isPlant ? Icons.spa : Icons.info_outline,
                         size: 16,
-                        color: diagnosis.isPlant ? theme.colorScheme.primary : Colors.grey[600],
+                        color: diagnosis.isPlant ? theme.colorScheme.primary : Colors.grey.shade700,
                       ),
                       const SizedBox(width: 4),
                       Expanded(
@@ -146,7 +338,7 @@ class PlantCaptureResultScreen extends StatelessWidget {
                               ? diagnosis.species.detectedMode
                               : "No recognizable plant foliage or stem found in this photo",
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.grey[600],
+                            color: Colors.grey.shade700,
                             fontStyle: FontStyle.italic,
                           ),
                           overflow: TextOverflow.ellipsis,
@@ -233,7 +425,7 @@ class PlantCaptureResultScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
+                        color: Colors.black.withValues(alpha: 0.04),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -280,10 +472,10 @@ class PlantCaptureResultScreen extends StatelessWidget {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.camera_alt_outlined),
+                    icon: const Icon(Icons.camera_alt_outlined, color: Colors.white),
                     label: const Text(
                       "Retake Photo",
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
                     ),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
@@ -307,7 +499,7 @@ class PlantCaptureResultScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: healthBgColor,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: healthColor.withOpacity(0.3)),
+                  border: Border.all(color: healthColor.withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -370,7 +562,7 @@ class PlantCaptureResultScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
+                        color: Colors.black.withValues(alpha: 0.04),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -423,12 +615,14 @@ class PlantCaptureResultScreen extends StatelessWidget {
                       ),
                     );
                   },
-                  icon: const Icon(Icons.analytics_outlined),
+                  icon: const Icon(Icons.analytics_outlined, color: Colors.white),
                   label: const Text(
                     "View Detailed Diagnosis & Treatments",
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.colorScheme.primary,
+                    foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
@@ -445,31 +639,46 @@ class PlantCaptureResultScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: kDefaultPadding),
               child: SizedBox(
                 width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const AddPlantScreen(),
+                child: _isAdded
+                    ? ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.popUntil(context, (route) => route.isFirst);
+                        },
+                        icon: const Icon(Icons.check_circle_rounded, color: Colors.white),
+                        label: const Text(
+                          "Added to Garden — View in Garden",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2E7D32),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      )
+                    : OutlinedButton.icon(
+                        onPressed: () => _showAddToGardenSheet(context),
+                        icon: Icon(Icons.add_circle_outline, color: theme.colorScheme.primary),
+                        label: Text(
+                          "Add $speciesName to My Garden",
+                          style: TextStyle(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: theme.colorScheme.primary),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
                       ),
-                    );
-                  },
-                  icon: Icon(Icons.add_circle_outline, color: theme.colorScheme.primary),
-                  label: Text(
-                    "Add $speciesName to My Garden",
-                    style: TextStyle(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: theme.colorScheme.primary),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                ),
               ),
             ),
 

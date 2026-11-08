@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from typing import Optional
 from PIL import Image
 import torch
+import numpy as np
 
 EXPERIMENT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(EXPERIMENT_ROOT))

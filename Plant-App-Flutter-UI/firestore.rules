@@ -1,0 +1,232 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model & Security Architecture
+// ===============================================================
+//
+// Collection: admin
+// Document ID: {adminId} (matches Firebase Auth UID)
+// Fields:
+//   - uid: string (matches adminId)
+//   - role: string ("admin")
+//   - email: string
+// Access: Only the designated admin can read/write their admin profile.
+//
+// Collection: users
+// Document ID: {userId} (matches Firebase Auth UID)
+// Fields:
+//   - uid: string (matches userId)
+//   - email: string
+//   - username: string
+//   - photoUrl: string (optional)
+//   - gardenPlants: list (optional)
+//   - gardenPlantsCount: number (optional)
+//   - gardenLastSaved: timestamp (optional)
+//   - createdAt: timestamp (optional)
+//   - updatedAt: timestamp (optional)
+// Access: Owner and Admin can read/write; users can create own account.
+//
+// Subcollection: users/{userId}/addresses
+// Document ID: {addressId}
+// Fields:
+//   - street: string
+//   - city: string
+//   - state: string
+//   - zipCode: string
+//   - isDefault: bool
+//   - updatedAt: timestamp
+// Access: Owner and Admin can read, create, update, and delete addresses.
+//
+// Subcollection: users/{userId}/orders
+// Document ID: {orderId} (e.g. "UG-123456")
+// Fields:
+//   - id: string
+//   - userId: string
+//   - items: list
+//   - subtotal: number
+//   - deliveryFee: number
+//   - totalAmount: number
+//   - shippingAddress: map
+//   - paymentMethod: string
+//   - status: string ("Pending", "Processing", "Shipped", "Delivered", "Cancelled")
+//   - createdAt: timestamp
+//   - cancelledAt: timestamp (optional)
+// Access: Owner and Admin can read, create, and update (cancel); admin can delete.
+//
+// Subcollection: users/{userId}/cart
+// Document ID: {cartDoc} (e.g. "current")
+// Access: Owner and Admin can read and write cart items.
+//
+// Collection: orders (Root collection for auditing & store orders)
+// Document ID: {orderId}
+// Fields:
+//   - id: string
+//   - userId: string (matches customer auth UID)
+//   - items: list
+//   - subtotal: number
+//   - deliveryFee: number
+//   - totalAmount: number
+//   - shippingAddress: map
+//   - paymentMethod: string
+//   - status: string
+//   - createdAt: timestamp
+//   - cancelledAt: timestamp (optional)
+// Access: Owner can create their order and read/update their order. Admin has full access.
+//
+// Collection: carts
+// Document ID: {userId} (matches customer auth UID)
+// Access: Owner and Admin can read and write shopping cart state.
+//
+// Collection: iot_devices
+// Document ID: {deviceId}
+// Access: Authenticated users can read telemetry; device owner or admin can register/update.
+//
+// Collection: plants
+// Document ID: {plantId}
+// Access: Authenticated users can read catalog; admin can create/update/delete.
+//
+// Collection: plant_supplies
+// Document ID: {itemId}
+// Access: Publicly readable for store browsing; admin can create/update/delete.
+//
+// Collection: admin_activity
+// Document ID: {logId}
+// Access: Strictly administrator only.
+//
+// Collection: admin_sessions
+// Subcollections: sessions, events
+// Access: Strictly administrator only.
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/admin/$(request.auth.uid));
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // Admin profiles & verification
+    match /admin/{adminId} {
+      allow read: if signedIn() && request.auth.uid == adminId;
+      allow write: if signedIn() && request.auth.uid == adminId;
+    }
+
+    // User profiles and nested subcollections
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if signedIn() && request.auth.uid == userId;
+      allow update, delete: if signedIn() && (request.auth.uid == userId || isAdmin());
+
+      // Addresses subcollection for shipping & delivery
+      match /addresses/{addressId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+        allow create, update, delete: if signedIn() && (request.auth.uid == userId || isAdmin());
+      }
+
+      // Orders subcollection for personal purchase history
+      match /orders/{orderId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+        allow create, update: if signedIn() && (request.auth.uid == userId || isAdmin());
+        allow delete: if isAdmin();
+      }
+
+      // Cart subcollection for persisting shopping cart
+      match /cart/{cartDoc} {
+        allow read, write: if signedIn() && (request.auth.uid == userId || isAdmin());
+      }
+
+      // Recursive wildcard for any other user-specific subcollections
+      match /{allChildren=**} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+        allow write: if signedIn() && (request.auth.uid == userId || isAdmin());
+      }
+    }
+
+    // Global / Root customer orders collection
+    match /orders/{orderId} {
+      // Authenticated users can read their own orders; admins can view all orders
+      allow read: if signedIn() && (
+        resource.data.userId == request.auth.uid || isAdmin()
+      );
+
+      // Authenticated users can create orders where userId matches their authenticated UID
+      allow create: if signedIn() && (
+        request.resource.data.userId == request.auth.uid || isAdmin()
+      );
+
+      // Authenticated users can update their own orders (e.g. cancellation), without changing ownership
+      allow update: if signedIn() && (
+        (resource.data.userId == request.auth.uid && request.resource.data.userId == resource.data.userId) ||
+        isAdmin()
+      );
+
+      // Only administrators can delete root order documents
+      allow delete: if isAdmin();
+    }
+
+    // Shopping carts collection (keyed by userId)
+    match /carts/{userId} {
+      allow read, write: if signedIn() && (request.auth.uid == userId || isAdmin());
+    }
+
+    // IoT hardware devices and telemetry cache
+    match /iot_devices/{deviceId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && (
+        (request.resource.data.registeredBy == request.auth.uid) || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Plant catalog
+    match /plants/{plantId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Plant supplies catalog (e-commerce shop items)
+    match /plant_supplies/{itemId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Admin activity audit logs
+    match /admin_activity/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // Admin sessions
+    match /admin_sessions/{adminId}/sessions/{sessionId} {
+      allow read: if isAdmin() && request.auth.uid == adminId;
+      allow create: if isAdmin() && request.auth.uid == adminId;
+      allow update, delete: if isAdmin() && request.auth.uid == adminId;
+    }
+
+    // Admin session events
+    match /admin_sessions/{adminId}/sessions/{sessionId}/events/{eventId} {
+      allow read: if isAdmin() && request.auth.uid == adminId;
+      allow create: if isAdmin() && request.auth.uid == adminId;
+      allow update, delete: if isAdmin() && request.auth.uid == adminId;
+    }
+
+    // Default deny for all unmatched paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

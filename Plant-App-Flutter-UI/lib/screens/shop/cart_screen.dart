@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:urbangreen/components/standard_app_bar.dart';
+import 'package:urbangreen/constants.dart';
 import 'package:urbangreen/models/cart_item_model.dart';
 import 'package:urbangreen/models/cart_model.dart';
 import 'package:urbangreen/screens/shop/checkout_screen.dart';
@@ -13,20 +15,97 @@ class CartScreen extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Your Cart"),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
+      backgroundColor: kBackgroundColor,
+      appBar: StandardAppBar(
+        title: 'Your Cart',
+        subtitle: '${cart.itemCount} item${cart.itemCount == 1 ? "" : "s"} ready for checkout',
+        toolbarHeight: 68,
+        actions: [
+          if (cart.items.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: IconButton(
+                icon: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: kBackgroundColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: kBorderSubtle, width: 1.2),
+                  ),
+                  child: const Icon(Icons.delete_sweep_outlined, size: 20, color: kStatusDanger),
+                ),
+                tooltip: 'Clear Cart',
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      title: const Text('Clear Cart'),
+                      content: const Text('Are you sure you want to remove all items from your cart?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Cancel', style: TextStyle(color: kTextSecondary)),
+                        ),
+                        ElevatedButton(
+                          onPressed: () {
+                            cart.clearCart();
+                            Navigator.pop(ctx);
+                          },
+                          style: ElevatedButton.styleFrom(backgroundColor: kStatusDanger),
+                          child: const Text('Clear', style: TextStyle(color: Colors.white)),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
       ),
-      body: cart.items.isEmpty
-          ? const Center(
-              child:
-                  Text("Your cart is empty.", style: TextStyle(fontSize: 18)),
+      body: cart.isLoading && cart.items.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : cart.items.isEmpty
+              ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.shopping_bag_outlined,
+                    size: 80,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Your cart is empty",
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Explore our botanical catalog and add supplies!",
+                    style: TextStyle(color: Colors.grey.shade700),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.colorScheme.primary,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.shopping_cart, color: Colors.white),
+                    label: const Text('Start Shopping', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
             )
           : Column(
               children: [
+                // Free Delivery Progress Banner
+                _buildDeliveryBanner(context, cart.totalPrice),
                 Expanded(
                   child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: cart.items.length,
                     itemBuilder: (context, index) {
                       final item = cart.items[index];
@@ -37,6 +116,39 @@ class CartScreen extends StatelessWidget {
                 const CartTotal(),
               ],
             ),
+    );
+  }
+
+  Widget _buildDeliveryBanner(BuildContext context, double total) {
+    final qualifiesForFree = total >= 50.00;
+    final diff = 50.00 - total;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: qualifiesForFree ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0),
+      child: Row(
+        children: [
+          Icon(
+            qualifiesForFree ? Icons.local_shipping : Icons.info_outline,
+            size: 20,
+            color: qualifiesForFree ? const Color(0xFF2E7D32) : const Color(0xFFE65100),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              qualifiesForFree
+                  ? '🎉 You qualify for FREE Delivery across Malaysia!'
+                  : 'Add RM ${diff.toStringAsFixed(2)} more to unlock FREE Delivery (orders RM 50+)',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: qualifiesForFree ? const Color(0xFF2E7D32) : const Color(0xFFE65100),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -53,53 +165,110 @@ class CartListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final cart = context.read<CartModel>();
     final theme = Theme.of(context);
+    final isNetwork = item.imageUrl.startsWith('http');
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.all(8.0),
+        padding: const EdgeInsets.all(10.0),
         child: Row(
           children: [
-            // You might want to add an image here later
-            // Image.asset(item.imageUrl, width: 60, height: 60, fit: BoxFit.cover),
-            const SizedBox(width: 16),
+            // Product Thumbnail Image
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 64,
+                height: 64,
+                child: isNetwork
+                    ? Image.network(
+                        item.imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: Colors.grey.shade200,
+                          child: Icon(Icons.spa, color: Colors.grey.shade400, size: 28),
+                        ),
+                      )
+                    : Image.asset(
+                        item.imageUrl.isNotEmpty ? item.imageUrl : 'assets/images/image_1.png',
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: Colors.grey.shade200,
+                          child: Icon(Icons.spa, color: Colors.grey.shade400, size: 28),
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     item.name,
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.bold),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'RM ${item.price.toStringAsFixed(2)}',
-                    style: theme.textTheme.bodyMedium,
+                    style: TextStyle(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  Text(
+                    'Item Total: RM ${(item.price * item.quantity).toStringAsFixed(2)}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
                   ),
                 ],
               ),
             ),
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.remove_circle_outline),
-                  onPressed: () {
-                    cart.decrementItem(item.productId);
-                  },
-                ),
-                Text(item.quantity.toString(),
-                    style: theme.textTheme.titleMedium),
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  onPressed: () {
-                    cart.addItem(item);
-                  },
-                ),
-              ],
+            // Quantity Counter
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  IconButton(
+                    iconSize: 18,
+                    padding: const EdgeInsets.all(4),
+                    constraints: const BoxConstraints(),
+                    icon: const Icon(Icons.remove),
+                    onPressed: () {
+                      cart.decrementItem(item.productId);
+                    },
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      item.quantity.toString(),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                  ),
+                  IconButton(
+                    iconSize: 18,
+                    padding: const EdgeInsets.all(4),
+                    constraints: const BoxConstraints(),
+                    icon: const Icon(Icons.add),
+                    onPressed: () {
+                      cart.addItem(item);
+                    },
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(width: 8),
             IconButton(
-              icon: const Icon(Icons.delete, color: Colors.red),
+              iconSize: 20,
+              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
               onPressed: () {
                 cart.removeItem(item.productId);
               },
@@ -112,14 +281,14 @@ class CartListItem extends StatelessWidget {
 }
 
 class CartTotal extends StatelessWidget {
-  const CartTotal({
-    super.key,
-  });
+  const CartTotal({super.key});
 
   @override
   Widget build(BuildContext context) {
     final cart = context.watch<CartModel>();
     final theme = Theme.of(context);
+    final deliveryFee = cart.totalPrice >= 50.00 || cart.totalPrice == 0 ? 0.00 : 5.00;
+    final grandTotal = cart.totalPrice + deliveryFee;
 
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -127,46 +296,83 @@ class CartTotal extends StatelessWidget {
         color: theme.cardColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha((255 * 0.1).round()),
+            color: Colors.black.withValues(alpha: 0.08),
             spreadRadius: 1,
-            blurRadius: 5,
+            blurRadius: 6,
             offset: const Offset(0, -2),
           ),
         ],
       ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text("Total", style: theme.textTheme.titleLarge),
-              Text(
-                'RM ${cart.totalPrice.toStringAsFixed(2)}',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.bold,
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("Subtotal", style: TextStyle(color: Colors.grey.shade700, fontSize: 14)),
+                Text(
+                  'RM ${cart.totalPrice.toStringAsFixed(2)}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const CheckoutScreen(),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 50),
-              backgroundColor: theme.colorScheme.primary,
-              foregroundColor: theme.colorScheme.onPrimary,
+              ],
             ),
-            child: const Text('Proceed to Checkout'),
-          ),
-        ],
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("Estimated Delivery", style: TextStyle(color: Colors.grey.shade700, fontSize: 14)),
+                Text(
+                  deliveryFee == 0 ? 'FREE' : 'RM ${deliveryFee.toStringAsFixed(2)}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: deliveryFee == 0 ? const Color(0xFF2E7D32) : Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("Estimated Total", style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                Text(
+                  'RM ${grandTotal.toStringAsFixed(2)}',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const CheckoutScreen(),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 50),
+                backgroundColor: theme.colorScheme.primary,
+                foregroundColor: theme.colorScheme.onPrimary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('Proceed to Checkout', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                  SizedBox(width: 8),
+                  Icon(Icons.arrow_forward, size: 18, color: Colors.white),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

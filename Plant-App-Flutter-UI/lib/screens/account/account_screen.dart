@@ -6,8 +6,11 @@ import 'package:urbangreen/constants.dart';
 import 'package:urbangreen/models/user_model.dart';
 import 'package:urbangreen/screens/account/change_password_screen.dart';
 import 'package:urbangreen/screens/account/change_username_screen.dart';
+import 'package:urbangreen/screens/account/order_history_screen.dart';
 import 'package:urbangreen/screens/address/address_screen.dart';
 import 'package:urbangreen/screens/auth/login_screen.dart';
+import 'package:urbangreen/screens/garden/plant_list_screen.dart';
+import 'package:urbangreen/screens/iot/iot_management_screen.dart';
 import 'package:urbangreen/screens/reports/reports_screen.dart';
 import 'package:urbangreen/services/auth_service.dart';
 import 'package:urbangreen/services/user_service.dart';
@@ -43,7 +46,7 @@ class _AccountScreenState extends State<AccountScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Profile picture updated successfully!'),
-            backgroundColor: Colors.green,
+            backgroundColor: kPrimaryColor,
           ),
         );
       }
@@ -52,7 +55,7 @@ class _AccountScreenState extends State<AccountScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to update picture: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
+            backgroundColor: kStatusDanger,
           ),
         );
       }
@@ -69,8 +72,8 @@ class _AccountScreenState extends State<AccountScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to log out?'),
+        title: const Text('Sign Out'),
+        content: const Text('Are you sure you want to log out of UrbanGreen?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -78,7 +81,8 @@ class _AccountScreenState extends State<AccountScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Logout'),
+            style: ElevatedButton.styleFrom(backgroundColor: kStatusDanger),
+            child: const Text('Logout', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -110,7 +114,6 @@ class _AccountScreenState extends State<AccountScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final currentUser = FirebaseAuth.instance.currentUser;
 
     if (currentUser == null) {
@@ -137,132 +140,275 @@ class _AccountScreenState extends State<AccountScreen> {
     }
 
     return Scaffold(
+      backgroundColor: kBackgroundColor,
       body: StreamBuilder<UserModel?>(
         stream: _userService.getUserProfileStream(currentUser.uid),
         builder: (context, snapshot) {
           final userModel = snapshot.data;
-          final username = userModel?.username ?? currentUser.displayName ?? "User";
+          final username = userModel?.username ?? currentUser.displayName ?? "Botanist";
           final email = userModel?.email ?? currentUser.email ?? "";
           final photoUrl = userModel?.photoUrl ?? currentUser.photoURL;
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(kDefaultPadding),
-            child: Column(
-              children: [
-                Center(
-                  child: Column(
-                    children: [
-                      Stack(
-                        children: [
-                          CircleAvatar(
-                            radius: 50,
-                            backgroundImage: _getAvatarImage(photoUrl),
-                          ),
-                          if (_isUploadingImage)
-                            const Positioned.fill(
-                              child: CircularProgressIndicator(),
-                            ),
+          return CustomScrollView(
+            slivers: [
+              // Header Profile Sliver
+              SliverAppBar(
+                expandedHeight: 220,
+                pinned: true,
+                backgroundColor: kSurfaceColor,
+                surfaceTintColor: Colors.transparent,
+                flexibleSpace: FlexibleSpaceBar(
+                  background: Container(
+                    padding: const EdgeInsets.fromLTRB(20, 50, 20, 16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          kAccentMint.withValues(alpha: 0.6),
+                          kBackgroundColor,
                         ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
                       ),
-                      const SizedBox(height: kDefaultPadding / 2),
-                      Text(
-                        username,
-                        style: theme.textTheme.titleLarge,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 44,
+                              backgroundColor: kPrimaryColor.withValues(alpha: 0.15),
+                              backgroundImage: _getAvatarImage(photoUrl),
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: InkWell(
+                                onTap: _isUploadingImage
+                                    ? null
+                                    : () => _pickAndUploadProfileImage(currentUser.uid),
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: const BoxDecoration(
+                                    color: kPrimaryColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.camera_alt, color: Colors.white, size: 14),
+                                ),
+                              ),
+                            ),
+                            if (_isUploadingImage)
+                              const Positioned.fill(
+                                child: CircularProgressIndicator(),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          username,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: kTextPrimary,
+                          ),
+                        ),
+                        Text(
+                          email,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // Settings Options
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Garden & Activity Group
+                      _buildSectionHeader('Garden & Orders'),
+                      const SizedBox(height: 8),
+                      Card(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        child: Column(
+                          children: [
+                            _buildOptionTile(
+                              icon: Icons.receipt_long_outlined,
+                              color: kPrimaryColor,
+                              title: 'Order History',
+                              subtitle: 'View past supplies purchases, receipt & order tracking',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const OrderHistoryScreen()),
+                                );
+                              },
+                            ),
+                            const Divider(height: 1, indent: 56),
+                            _buildOptionTile(
+                              icon: Icons.analytics_outlined,
+                              color: Colors.blue.shade700,
+                              title: 'Health & Watering Reports',
+                              subtitle: 'Foliage pathology, soil hydration & care analytics',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const ReportsScreen()),
+                                );
+                              },
+                            ),
+                            const Divider(height: 1, indent: 56),
+                            _buildOptionTile(
+                              icon: Icons.yard_outlined,
+                              color: Colors.teal.shade700,
+                              title: 'My Garden Sanctuary',
+                              subtitle: 'Manage specimens, watering status & care profiles',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const PlantListScreen()),
+                                );
+                              },
+                            ),
+                            const Divider(height: 1, indent: 56),
+                            _buildOptionTile(
+                              icon: Icons.sensors,
+                              color: Colors.indigo.shade700,
+                              title: 'IoT Hardware Gateway',
+                              subtitle: 'Telemetry nodes, live soil moisture & pump pulse',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const IotManagementScreen()),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
                       ),
-                      Text(
-                        email,
-                        style: theme.textTheme.bodyMedium,
+                      const SizedBox(height: 20),
+
+                      // Account Settings Group
+                      _buildSectionHeader('Account & Security'),
+                      const SizedBox(height: 8),
+                      Card(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        child: Column(
+                          children: [
+                            _buildOptionTile(
+                              icon: Icons.badge_outlined,
+                              color: Colors.teal.shade700,
+                              title: 'Change Username',
+                              subtitle: 'Update your display identifier',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => ChangeUsernameScreen(currentUsername: username),
+                                  ),
+                                );
+                              },
+                            ),
+                            const Divider(height: 1, indent: 56),
+                            _buildOptionTile(
+                              icon: Icons.lock_outline,
+                              color: Colors.indigo.shade700,
+                              title: 'Change Password',
+                              subtitle: 'Secure your account credentials',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const ChangePasswordScreen()),
+                                );
+                              },
+                            ),
+                            const Divider(height: 1, indent: 56),
+                            _buildOptionTile(
+                              icon: Icons.location_on_outlined,
+                              color: Colors.orange.shade800,
+                              title: 'Delivery Addresses',
+                              subtitle: 'Manage saved shipping destinations',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const AddressScreen()),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
                       ),
+                      const SizedBox(height: 20),
+
+                      // Sign Out
+                      _buildSectionHeader('Session'),
+                      const SizedBox(height: 8),
+                      Card(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        child: _buildOptionTile(
+                          icon: Icons.logout,
+                          color: kStatusDanger,
+                          title: 'Sign Out',
+                          subtitle: 'Log out of this device',
+                          onTap: _logout,
+                        ),
+                      ),
+                      const SizedBox(height: 40),
                     ],
                   ),
                 ),
-                const SizedBox(height: kDefaultPadding * 2),
-                _buildAccountOption(
-                  context,
-                  icon: Icons.person_outline,
-                  text: "Change Username",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ChangeUsernameScreen(
-                          currentUsername: username,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                _buildAccountOption(
-                  context,
-                  icon: Icons.image_outlined,
-                  text: "Change Profile Picture",
-                  onTap: _isUploadingImage
-                      ? null
-                      : () => _pickAndUploadProfileImage(currentUser.uid),
-                ),
-                _buildAccountOption(
-                  context,
-                  icon: Icons.lock_outline,
-                  text: "Change Password",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const ChangePasswordScreen(),
-                      ),
-                    );
-                  },
-                ),
-                _buildAccountOption(
-                  context,
-                  icon: Icons.location_on_outlined,
-                  text: "Change Address",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const AddressScreen(),
-                      ),
-                    );
-                  },
-                ),
-                _buildAccountOption(
-                  context,
-                  icon: Icons.description_outlined,
-                  text: "Reports",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const ReportsScreen(),
-                      ),
-                    );
-                  },
-                ),
-                _buildAccountOption(
-                  context,
-                  icon: Icons.logout,
-                  text: "Logout",
-                  onTap: _logout,
-                ),
-              ],
-            ),
+              ),
+            ],
           );
         },
       ),
     );
   }
 
-  Widget _buildAccountOption(
-    BuildContext context, {
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: kTextPrimary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOptionTile({
     required IconData icon,
-    required String text,
-    VoidCallback? onTap,
+    required Color color,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
   }) {
     return ListTile(
-      leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
-      title: Text(text),
-      trailing: const Icon(Icons.chevron_right),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: CircleAvatar(
+        radius: 18,
+        backgroundColor: color.withValues(alpha: 0.12),
+        child: Icon(icon, color: color, size: 18),
+      ),
+      title: Text(
+        title,
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+      ),
+      trailing: const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
       onTap: onTap,
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:urbangreen/constants.dart';
 import 'package:urbangreen/screens/auth/login_screen.dart';
 
 class EmailSentScreen extends StatelessWidget {
@@ -7,39 +8,61 @@ class EmailSentScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: kBackgroundColor,
       appBar: AppBar(
-        title: const Text('Email Sent'),
+        title: const Text('Check Your Inbox'),
+        backgroundColor: kSurfaceColor,
+        elevation: 0,
+        scrolledUnderElevation: 0,
       ),
       body: Center(
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(
-                Icons.email,
-                size: 48.0 * 2,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 32.0),
-              Text(
-                'A password reset link has been sent to your email address.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 32.0),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 16.0 * 2.5),
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: kPrimaryColor.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
                 ),
-                onPressed: () {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(
-                        builder: (context) => const LoginScreen()),
-                    (Route<dynamic> route) => false,
-                  );
-                },
-                child: const Text('Back to Login'),
+                child: const Icon(
+                  Icons.mark_email_read_rounded,
+                  size: 64,
+                  color: kPrimaryColor,
+                ),
+              ),
+              const SizedBox(height: 28.0),
+              const Text(
+                'Recovery Link Dispatched',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
+              ),
+              const SizedBox(height: 12.0),
+              Text(
+                'We have sent a secure password reset link to your email address. Please follow the instructions in the email to restore account access.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.5),
+              ),
+              const SizedBox(height: 36.0),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kPrimaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 2,
+                  ),
+                  onPressed: () {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (context) => const LoginScreen()),
+                      (Route<dynamic> route) => false,
+                    );
+                  },
+                  child: const Text('Back to Login', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
               ),
             ],
           ),
