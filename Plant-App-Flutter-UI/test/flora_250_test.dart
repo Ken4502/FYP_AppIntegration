@@ -5,8 +5,12 @@ import 'package:urbangreen/models/plant_species_profile_model.dart';
 void main() {
   group('FloraNet Botanical Encyclopedia Tests', () {
     test('Contains verified plant species including Pandan', () {
-      expect(Flora250Data.speciesList.length, equals(251));
+      expect(Flora250Data.speciesList.length, equals(261));
       expect(Flora250Data.findByNameOrSpecies('Pandan'), isNotNull);
+      expect(Flora250Data.findByNameOrSpecies('Curry Leaf'), isNotNull);
+      expect(Flora250Data.findByNameOrSpecies('Kaffir Lime'), isNotNull);
+      expect(Flora250Data.findByNameOrSpecies('Bunga Telang'), isNotNull);
+      expect(Flora250Data.findByNameOrSpecies('Kangkung'), isNotNull);
     });
 
     test('Every species has complete, non-empty care metadata', () {
@@ -38,7 +42,7 @@ void main() {
       }
     });
 
-    test('Category distribution is accurate and covers all 251 plants', () {
+    test('Category distribution is accurate and covers all 261 plants', () {
       final categoryCounts = <String, int>{};
       for (final s in Flora250Data.speciesList) {
         categoryCounts[s.category] = (categoryCounts[s.category] ?? 0) + 1;
@@ -46,15 +50,15 @@ void main() {
 
       expect(categoryCounts['Ferns'], equals(6));
       expect(categoryCounts['Succulents & Cacti'], equals(16));
-      expect(categoryCounts['Herbs & Aromatics'], equals(26)); // + Pandan
-      expect(categoryCounts['Fruits & Vegetables'], equals(40));
+      expect(categoryCounts['Herbs & Aromatics'], equals(30)); // + Pandan + 4 SEA
+      expect(categoryCounts['Fruits & Vegetables'], equals(44)); // + 4 SEA
       expect(categoryCounts['Trees & Palms'], equals(19));
-      expect(categoryCounts['Flowers & Ornamentals'], equals(50));
+      expect(categoryCounts['Flowers & Ornamentals'], equals(52)); // + 2 SEA
       expect(categoryCounts['Wild & Urban Flora'], equals(35));
       expect(categoryCounts['Houseplants & Tropicals'], equals(59));
 
       final total = categoryCounts.values.reduce((a, b) => a + b);
-      expect(total, equals(251));
+      expect(total, equals(261));
     });
 
     test('toPlant() converts seamlessly with intact care parameters', () {
