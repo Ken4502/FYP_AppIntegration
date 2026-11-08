@@ -90,10 +90,137 @@ class _AccountScreenState extends State<AccountScreen> {
 
     if (confirm == true) {
       await _authService.logout();
+      AuthService.setGuestMode(false);
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const LoginScreen()),
           (route) => false,
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteAccount() async {
+    final passwordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool obscurePassword = true;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: kStatusDanger, size: 28),
+                  SizedBox(width: 8),
+                  Text('Delete Account', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                ],
+              ),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'This action is irreversible. All your profile information, cloud-synchronized garden plants, and saved delivery addresses will be permanently deleted.',
+                      style: TextStyle(fontSize: 13, color: kTextPrimary, height: 1.4),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Please confirm your password to proceed:',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: kTextPrimary),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: passwordController,
+                      obscureText: obscurePassword,
+                      decoration: InputDecoration(
+                        hintText: 'Current password',
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                            size: 20,
+                          ),
+                          onPressed: () {
+                            setDialogState(() {
+                              obscurePassword = !obscurePassword;
+                            });
+                          },
+                        ),
+                      ),
+                      validator: (v) => (v == null || v.isEmpty) ? 'Enter password to confirm' : null,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx, false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (formKey.currentState!.validate()) {
+                      Navigator.pop(dialogCtx, true);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kStatusDanger,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Permanently Delete'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    final enteredPassword = passwordController.text;
+
+    try {
+      await _authService.deleteAccount(currentPassword: enteredPassword);
+      AuthService.setGuestMode(false);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Your UrbanGreen account has been permanently deleted.'),
+            backgroundColor: kStatusDanger,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        String msg = e.message ?? 'Failed to delete account.';
+        if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+          msg = 'Incorrect password. Account deletion cancelled.';
+        } else if (e.code == 'requires-recent-login') {
+          msg = 'Security timeout. Please sign out, log back in, and try deleting again.';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: kStatusDanger),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: kStatusDanger),
         );
       }
     }
@@ -114,29 +241,10 @@ class _AccountScreenState extends State<AccountScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = FirebaseAuth.instance.currentUser;
+    final currentUser = _authService.currentUser;
 
     if (currentUser == null) {
-      return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('Not logged in.'),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (context) => const LoginScreen()),
-                  );
-                },
-                child: const Text('Go to Login'),
-              ),
-            ],
-          ),
-        ),
-      );
+      return _buildGuestAccountView();
     }
 
     return Scaffold(
@@ -342,6 +450,14 @@ class _AccountScreenState extends State<AccountScreen> {
                                 );
                               },
                             ),
+                            const Divider(height: 1, indent: 56),
+                            _buildOptionTile(
+                              icon: Icons.delete_forever_outlined,
+                              color: kStatusDanger,
+                              title: 'Delete Account',
+                              subtitle: 'Permanently remove your account & all data',
+                              onTap: _confirmDeleteAccount,
+                            ),
                           ],
                         ),
                       ),
@@ -360,7 +476,11 @@ class _AccountScreenState extends State<AccountScreen> {
                           onTap: _logout,
                         ),
                       ),
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 24),
+
+                      // App Info & Version Branding Footer
+                      _buildBrandFooter(),
+                      const SizedBox(height: 36),
                     ],
                   ),
                 ),
@@ -368,6 +488,265 @@ class _AccountScreenState extends State<AccountScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildBrandFooter() {
+    return Center(
+      child: Column(
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  width: 20,
+                  height: 20,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const Icon(
+                    Icons.spa_rounded,
+                    size: 18,
+                    color: kPrimaryColor,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'UrbanGreen',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: kTextPrimary,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Version 1.0.0 (Flagship AI & IoT Ecosystem)',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey.shade500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGuestAccountView() {
+    return Scaffold(
+      backgroundColor: kBackgroundColor,
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 220,
+            pinned: true,
+            backgroundColor: kSurfaceColor,
+            surfaceTintColor: Colors.transparent,
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                padding: const EdgeInsets.fromLTRB(20, 50, 20, 16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      kAccentMint.withValues(alpha: 0.6),
+                      kBackgroundColor,
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    CircleAvatar(
+                      radius: 44,
+                      backgroundColor: kPrimaryColor.withValues(alpha: 0.15),
+                      backgroundImage: const AssetImage('assets/images/user_placeholder.png'),
+                    ),
+                    const SizedBox(height: 10),
+                    const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Guest Explorer',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: kTextPrimary,
+                          ),
+                        ),
+                        SizedBox(width: 6),
+                        Icon(Icons.explore_outlined, color: kPrimaryColor, size: 18),
+                      ],
+                    ),
+                    Text(
+                      'Browsing offline & local mode • No account linked',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Sign In / Create Account Callout Card
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: kPrimaryColor.withValues(alpha: 0.3)),
+                    ),
+                    color: kSurfaceColor,
+                    child: Padding(
+                      padding: const EdgeInsets.all(18.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: kPrimaryColor.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(Icons.cloud_upload_outlined, color: kPrimaryColor, size: 22),
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Text(
+                                  'Sync Garden with UrbanGreen Cloud',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                    color: kTextPrimary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Create an account to backup your plants to the cloud, enable multi-device sync, receive push moisture notifications, and save shipping addresses.',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.4),
+                          ),
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                                );
+                              },
+                              icon: const Icon(Icons.login, size: 18, color: Colors.white),
+                              label: const Text('Sign In or Create Account', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: kPrimaryColor,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Garden & Features Group
+                  _buildSectionHeader('Local Features'),
+                  const SizedBox(height: 8),
+                  Card(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    child: Column(
+                      children: [
+                        _buildOptionTile(
+                          icon: Icons.yard_outlined,
+                          color: Colors.teal.shade700,
+                          title: 'My Garden Sanctuary',
+                          subtitle: 'View local specimens, watering status & care profiles',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const PlantListScreen()),
+                            );
+                          },
+                        ),
+                        const Divider(height: 1, indent: 56),
+                        _buildOptionTile(
+                          icon: Icons.analytics_outlined,
+                          color: Colors.blue.shade700,
+                          title: 'Health & Watering Reports',
+                          subtitle: 'Foliage pathology, soil hydration & care analytics',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const ReportsScreen()),
+                            );
+                          },
+                        ),
+                        const Divider(height: 1, indent: 56),
+                        _buildOptionTile(
+                          icon: Icons.sensors,
+                          color: Colors.indigo.shade700,
+                          title: 'IoT Hardware Gateway',
+                          subtitle: 'Connect ESP32 telemetry nodes & soil moisture sensors',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const IotManagementScreen()),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Session Section
+                  _buildSectionHeader('Guest Session'),
+                  const SizedBox(height: 8),
+                  Card(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    child: _buildOptionTile(
+                      icon: Icons.exit_to_app,
+                      color: kStatusDanger,
+                      title: 'Exit Guest Mode',
+                      subtitle: 'Return to login and registration screen',
+                      onTap: () {
+                        AuthService.setGuestMode(false);
+                        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+                          MaterialPageRoute(builder: (context) => const LoginScreen()),
+                          (route) => false,
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // App Info & Version Branding Footer
+                  _buildBrandFooter(),
+                  const SizedBox(height: 36),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -29,13 +29,19 @@ class UserModel {
   }
 
   factory UserModel.fromMap(Map<String, dynamic> map, String docId) {
+    DateTime? parseDate(dynamic val) {
+      if (val is Timestamp) return val.toDate();
+      if (val is DateTime) return val;
+      return null;
+    }
+
     return UserModel(
       uid: docId,
       email: map['email'] ?? '',
       username: map['username'] ?? '',
       photoUrl: map['photoUrl'],
-      createdAt: (map['createdAt'] as Timestamp?)?.toDate(),
-      updatedAt: (map['updatedAt'] as Timestamp?)?.toDate(),
+      createdAt: parseDate(map['createdAt']),
+      updatedAt: parseDate(map['updatedAt']),
     );
   }
 

@@ -121,6 +121,10 @@ class AuthWrapper extends StatelessWidget {
           );
         }
         if (snapshot.hasData && snapshot.data != null) {
+          WebHardwareBridge.saveStorage('is_guest_mode', 'false');
+          return const MainScreen();
+        }
+        if (WebHardwareBridge.loadStorage('is_guest_mode') == 'true') {
           return const MainScreen();
         }
         return const LoginScreen();
