@@ -197,11 +197,11 @@ class _PlantHealthReportScreenState extends State<PlantHealthReportScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
+                        const Row(
                           children: [
-                            const Icon(Icons.sensors, size: 18, color: kPrimaryColor),
-                            const SizedBox(width: 6),
-                            const Text(
+                            Icon(Icons.sensors, size: 18, color: kPrimaryColor),
+                            SizedBox(width: 6),
+                            Text(
                               'IoT Monitored Specimens',
                               style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: kTextPrimary),
                             ),

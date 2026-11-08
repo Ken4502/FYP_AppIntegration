@@ -1,4 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:urbangreen/components/standard_app_bar.dart';
@@ -6,7 +5,9 @@ import 'package:urbangreen/constants.dart';
 import 'package:urbangreen/models/address_model.dart';
 import 'package:urbangreen/models/cart_model.dart';
 import 'package:urbangreen/screens/address/add_address_screen.dart';
+import 'package:urbangreen/screens/auth/login_screen.dart';
 import 'package:urbangreen/screens/shop/order_confirmation_screen.dart';
+import 'package:urbangreen/services/auth_service.dart';
 import 'package:urbangreen/services/order_service.dart';
 import 'package:urbangreen/services/user_service.dart';
 
@@ -224,16 +225,68 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cart = context.watch<CartModel>();
-    final user = FirebaseAuth.instance.currentUser;
+    final user = AuthService().currentUser;
 
     if (user == null) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: kBackgroundColor,
-        appBar: StandardAppBar(
+        appBar: const StandardAppBar(
           title: 'Checkout',
+          subtitle: 'Sign in to complete order',
           toolbarHeight: 68,
         ),
-        body: Center(child: Text('Please log in to complete checkout.')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28.0),
+            child: Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: Colors.grey.shade200),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.lock_person_outlined, size: 64, color: kPrimaryColor),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Account Required for Checkout',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kTextPrimary),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Please log in or create an UrbanGreen account to save your delivery address, track order dispatch, and complete payment.',
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.4),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const LoginScreen()),
+                          );
+                        },
+                        icon: const Icon(Icons.login, color: Colors.white, size: 18),
+                        label: const Text('Sign In or Register', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kPrimaryColor,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       );
     }
 

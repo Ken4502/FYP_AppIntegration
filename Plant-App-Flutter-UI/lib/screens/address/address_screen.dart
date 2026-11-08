@@ -1,9 +1,10 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:urbangreen/constants.dart';
 import 'package:urbangreen/models/address_model.dart';
 import 'package:urbangreen/screens/address/add_address_screen.dart';
 import 'package:urbangreen/screens/address/edit_address_screen.dart';
+import 'package:urbangreen/screens/auth/login_screen.dart';
+import 'package:urbangreen/services/auth_service.dart';
 import 'package:urbangreen/services/user_service.dart';
 
 class AddressScreen extends StatefulWidget {
@@ -112,13 +113,68 @@ class AddressScreenState extends State<AddressScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = FirebaseAuth.instance.currentUser;
+    final currentUser = AuthService().currentUser;
 
     if (currentUser == null) {
       return Scaffold(
         backgroundColor: kBackgroundColor,
-        appBar: AppBar(title: const Text('My Addresses')),
-        body: const Center(child: Text('Please log in to manage addresses.')),
+        appBar: AppBar(
+          title: const Text('Saved Addresses'),
+          backgroundColor: kSurfaceColor,
+          elevation: 0,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28.0),
+            child: Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: Colors.grey.shade200),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.location_off_outlined, size: 64, color: kPrimaryColor),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Account Required',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kTextPrimary),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Please log in or create an UrbanGreen account to manage saved delivery destinations.',
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.4),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const LoginScreen()),
+                          );
+                        },
+                        icon: const Icon(Icons.login, color: Colors.white, size: 18),
+                        label: const Text('Sign In or Register', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kPrimaryColor,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       );
     }
 

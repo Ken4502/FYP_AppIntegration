@@ -40,6 +40,21 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  void _continueAsGuest() {
+    AuthService.setGuestMode(true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🌿 Welcome to UrbanGreen! Browsing in Guest Mode.'),
+        backgroundColor: kPrimaryColor,
+        duration: Duration(seconds: 3),
+      ),
+    );
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const MainScreen()),
+    );
+  }
+
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -52,6 +67,7 @@ class _LoginScreenState extends State<LoginScreen> {
         identifier: _usernameController.text,
         password: _passwordController.text,
       );
+      AuthService.setGuestMode(false);
 
       if (mounted) {
         Navigator.pushReplacement(
@@ -198,6 +214,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
                             labelText: 'Email or Username',
+                            hintText: 'e.g. user@urbangreen.com',
                             prefixIcon: Icon(Icons.alternate_email, size: 20, color: Colors.grey.shade600),
                           ),
                           validator: (value) {
@@ -275,6 +292,29 @@ class _LoginScreenState extends State<LoginScreen> {
                                     child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                                   )
                                 : const Text('Sign In to UrbanGreen', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Continue as Guest Button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: OutlinedButton.icon(
+                            onPressed: _isLoading ? null : _continueAsGuest,
+                            icon: const Icon(Icons.explore_outlined, size: 20, color: kPrimaryColor),
+                            label: const Text(
+                              'Continue as Guest',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: kPrimaryColor,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: kPrimaryColor.withValues(alpha: 0.5), width: 1.5),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
                           ),
                         ),
                       ],
