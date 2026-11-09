@@ -60,7 +60,7 @@ jobs:
         run: |
           flutter analyze --no-fatal-infos
 
-      - name: Run Test Suite (All 59 Unit & Widget Tests)
+      - name: Run Test Suite (1,300+ Automated Unit, Widget & Domain Tests)
         run: |
           flutter test --reporter expanded
 

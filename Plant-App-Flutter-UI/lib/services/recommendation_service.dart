@@ -129,7 +129,7 @@ class RecommendationService {
 
         // Species-specific plant care matches
         for (final plant in plants) {
-          final s = plant.species.toLowerCase();
+          final s = '${plant.species} ${plant.name}'.toLowerCase();
           final pName = product.name.toLowerCase();
 
           // Tropical & Broadleaf foliage (Monstera, Pandan, Fiddle Leaf, Pothos, Snake Plant)
