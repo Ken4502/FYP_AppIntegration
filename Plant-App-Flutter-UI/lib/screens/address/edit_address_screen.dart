@@ -101,11 +101,14 @@ class EditAddressScreenState extends State<EditAddressScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.isDarkMode;
+
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: AppBar(
         title: const Text('Edit Address'),
-        backgroundColor: kSurfaceColor,
+        backgroundColor: isDark ? kDarkSurfaceColor : kSurfaceColor,
+        foregroundColor: isDark ? kDarkTextPrimary : kTextPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
@@ -119,11 +122,12 @@ class EditAddressScreenState extends State<EditAddressScreen> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: kSurfaceColor,
+                  color: isDark ? kDarkCardColor : kSurfaceColor,
                   borderRadius: BorderRadius.circular(20),
+                  border: isDark ? Border.all(color: kDarkBorderSubtle) : null,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
+                      color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),

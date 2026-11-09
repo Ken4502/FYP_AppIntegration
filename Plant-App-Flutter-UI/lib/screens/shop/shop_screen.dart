@@ -53,9 +53,9 @@ class ShopScreen extends StatelessWidget {
     return DefaultTabController(
       length: 4,
       child: Scaffold(
-        backgroundColor: kBackgroundColor,
+        backgroundColor: context.scaffoldBg,
         appBar: AppBar(
-          backgroundColor: kSurfaceColor,
+          backgroundColor: context.surfaceBg,
           elevation: 0,
           scrolledUnderElevation: 0,
           toolbarHeight: 68,
@@ -63,19 +63,19 @@ class ShopScreen extends StatelessWidget {
           title: Container(
             height: 42,
             decoration: BoxDecoration(
-              color: kBackgroundColor,
+              color: context.surfaceBg,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: kBorderSubtle),
+              border: Border.all(color: context.borderSubtleColor),
             ),
-            child: const TextField(
-              decoration: InputDecoration(
+            child: TextField(
+              decoration: const InputDecoration(
                 hintText: "Search botanicals & gear...",
                 hintStyle: TextStyle(fontSize: 13, color: kTextSecondary),
                 prefixIcon: Icon(Icons.search_rounded, size: 20, color: kPrimaryColor),
                 border: InputBorder.none,
                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               ),
-              style: TextStyle(fontSize: 13, color: kTextPrimary),
+              style: TextStyle(fontSize: 13, color: context.textPrimaryColor),
             ),
           ),
           actions: [
@@ -86,11 +86,11 @@ class ShopScreen extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: kBackgroundColor,
+                    color: context.surfaceBg,
                     shape: BoxShape.circle,
-                    border: Border.all(color: kBorderSubtle, width: 1.2),
+                    border: Border.all(color: context.borderSubtleColor, width: 1.2),
                   ),
-                  child: const Icon(Icons.shopping_cart_outlined, color: kTextPrimary, size: 20),
+                  child: Icon(Icons.shopping_cart_outlined, color: context.textPrimaryColor, size: 20),
                 ),
                 tooltip: 'Shopping Cart',
                 onPressed: () {
@@ -108,9 +108,9 @@ class ShopScreen extends StatelessWidget {
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
-                color: kBackgroundColor,
+                color: context.surfaceBg,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: kBorderSubtle),
+                border: Border.all(color: context.borderSubtleColor),
               ),
               child: TabBar(
                 indicatorSize: TabBarIndicatorSize.tab,

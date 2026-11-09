@@ -133,10 +133,11 @@ class _IotManagementScreenState extends State<IotManagementScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final canPop = Navigator.canPop(context);
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -147,8 +148,8 @@ class _IotManagementScreenState extends State<IotManagementScreen>
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    kAccentMint.withValues(alpha: 0.55),
-                    kBackgroundColor,
+                    isDark ? kDarkSurfaceColor : kAccentMint.withValues(alpha: 0.55),
+                    isDark ? kDarkBackgroundColor : kBackgroundColor,
                   ],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
@@ -173,16 +174,16 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
+                                color: isDark ? kDarkTextSecondary : Colors.grey.shade700,
                               ),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               widget.plantId != null ? 'Sensor Pairing' : 'My Plant Sensors',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.w800,
-                                color: kTextPrimary,
+                                color: isDark ? kDarkTextPrimary : kTextPrimary,
                                 letterSpacing: -0.5,
                               ),
                             ),
@@ -192,7 +193,7 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                       // Connection Modes Help Guide Button
                       IconButton(
                         tooltip: 'IoT Hotspot vs Wi-Fi Guide',
-                        icon: const Icon(Icons.help_outline_rounded, color: kPrimaryColor, size: 22),
+                        icon: Icon(Icons.help_outline_rounded, color: isDark ? kSecondaryColor : kPrimaryColor, size: 22),
                         onPressed: () => showIotConnectionModesGuide(context),
                       ),
                       const SizedBox(width: 4),
@@ -243,12 +244,12 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                   Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: kSurfaceColor,
+                      color: isDark ? kDarkSurfaceColor : kSurfaceColor,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: kBorderSubtle),
+                      border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.03),
+                          color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
                           blurRadius: 6,
                           offset: const Offset(0, 2),
                         ),
@@ -274,7 +275,7 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                         ],
                       ),
                       labelColor: Colors.white,
-                      unselectedLabelColor: kTextSecondary,
+                      unselectedLabelColor: isDark ? kDarkTextSecondary : kTextSecondary,
                       labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                       tabs: const [
                         Tab(
@@ -403,15 +404,16 @@ class _IotManagementScreenState extends State<IotManagementScreen>
 
   /// Top Hub Header Summary with quick action to scan for devices
   Widget _buildHubHeaderCard(int deviceCount) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -441,13 +443,13 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                   children: [
                     Row(
                       children: [
-                        const Flexible(
+                        Flexible(
                           child: Text(
                             'Plant Sensor Hub',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
-                              color: kTextPrimary,
+                              color: isDark ? kDarkTextPrimary : kTextPrimary,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -548,6 +550,7 @@ class _IotManagementScreenState extends State<IotManagementScreen>
 
   /// Card representation for each registered IoT probe in the list
   Widget _buildDeviceCard(IotDevice device) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final Plant? pairedPlant = _plantService.getPlantForDevice(device.id);
     final bool hasWifi = device.isWifiConnected && device.wifiSsid != null && device.wifiSsid!.isNotEmpty;
     final int moisture = (device.moistureLevel != null)
@@ -557,12 +560,12 @@ class _IotManagementScreenState extends State<IotManagementScreen>
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -621,10 +624,10 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                               Flexible(
                                 child: Text(
                                   device.name,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 15,
-                                    color: kTextPrimary,
+                                    color: isDark ? kDarkTextPrimary : kTextPrimary,
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -731,9 +734,9 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
-                    color: kBackgroundColor,
+                    color: isDark ? kDarkSurfaceColor : kBackgroundColor,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: kBorderSubtle),
+                    border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                   ),
                   child: Row(
                     children: [
@@ -828,12 +831,13 @@ class _IotManagementScreenState extends State<IotManagementScreen>
 
   /// Empty state when no IoT probes are connected
   Widget _buildEmptyDevicesCard() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
       ),
       child: Column(
         children: [
@@ -846,19 +850,19 @@ class _IotManagementScreenState extends State<IotManagementScreen>
             child: const Icon(Icons.sensors_off_rounded, color: kPrimaryColor, size: 36),
           ),
           const SizedBox(height: 14),
-          const Text(
+          Text(
             'No IoT Probes in Hub',
             style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 16,
-              color: kTextPrimary,
+              color: isDark ? kDarkTextPrimary : kTextPrimary,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Scan your local Wi-Fi subnet or follow the setup wizard to connect your ESP32 soil probe for real-time monitoring and irrigation.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: kTextSecondary, height: 1.4),
+            style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary, height: 1.4),
           ),
           const SizedBox(height: 18),
           Row(
@@ -945,11 +949,12 @@ class _IotManagementScreenState extends State<IotManagementScreen>
     required String subtitle,
     required VoidCallback onTap,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
       ),
       child: ListTile(
         onTap: onTap,
@@ -960,17 +965,17 @@ class _IotManagementScreenState extends State<IotManagementScreen>
             color: kPrimaryColor.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, color: kPrimaryColor, size: 20),
+          child: Icon(icon, color: isDark ? kSecondaryColor : kPrimaryColor, size: 20),
         ),
         title: Text(
           title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: kTextPrimary),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? kDarkTextPrimary : kTextPrimary),
         ),
         subtitle: Text(
           subtitle,
-          style: const TextStyle(fontSize: 11, color: kTextSecondary),
+          style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : kTextSecondary),
         ),
-        trailing: const Icon(Icons.chevron_right_rounded, color: kTextSecondary, size: 20),
+        trailing: Icon(Icons.chevron_right_rounded, color: isDark ? kDarkTextSecondary : kTextSecondary, size: 20),
       ),
     );
   }

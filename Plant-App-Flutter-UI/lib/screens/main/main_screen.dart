@@ -79,9 +79,11 @@ class _MainScreenState extends State<MainScreen> {
 
   void _showCameraActionSheet() {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     showModalBottomSheet(
       context: context,
+      backgroundColor: isDark ? kDarkCardColor : kSurfaceColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -227,7 +229,7 @@ class _MainScreenState extends State<MainScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
+                    color: isDark ? kDarkSurfaceColor : Colors.grey.shade50,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(

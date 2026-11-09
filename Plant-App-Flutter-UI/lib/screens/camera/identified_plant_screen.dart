@@ -19,12 +19,13 @@ class IdentifiedPlantScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final name = plantName ?? 'Monstera Deliciosa';
     final desc = plantDescription ??
         'Commonly known as the Swiss Cheese Plant, Monstera Deliciosa is a tropical evergreen vine celebrated for its dramatic perforated foliage. Native to the lush tropical rainforests of southern Mexico to Central America, it thrives in warm, humid indoor spaces with indirect bright daylight.';
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       body: CustomScrollView(
         slivers: [
           // Parallax Hero App Bar
@@ -114,11 +115,11 @@ class IdentifiedPlantScreen extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: kSurfaceColor,
+                      color: isDark ? kDarkCardColor : kSurfaceColor,
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
+                          color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -129,7 +130,7 @@ class IdentifiedPlantScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.green.shade50,
+                            color: isDark ? kDarkSurfaceColor : Colors.green.shade50,
                             shape: BoxShape.circle,
                           ),
                           child: Icon(Icons.favorite_rounded, color: Colors.green.shade700, size: 24),
@@ -168,11 +169,11 @@ class IdentifiedPlantScreen extends StatelessWidget {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      _buildEnvCard(Icons.wb_sunny_rounded, 'Indirect Bright', 'Sunlight', Colors.amber),
+                      _buildEnvCard(context, Icons.wb_sunny_rounded, 'Indirect Bright', 'Sunlight', Colors.amber),
                       const SizedBox(width: 10),
-                      _buildEnvCard(Icons.water_drop_rounded, 'Weekly Top Soil', 'Moisture', Colors.blue),
+                      _buildEnvCard(context, Icons.water_drop_rounded, 'Weekly Top Soil', 'Moisture', Colors.blue),
                       const SizedBox(width: 10),
-                      _buildEnvCard(Icons.thermostat_rounded, '18° - 27°C', 'Temperature', Colors.deepOrange),
+                      _buildEnvCard(context, Icons.thermostat_rounded, '18° - 27°C', 'Temperature', Colors.deepOrange),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -264,14 +265,15 @@ class IdentifiedPlantScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildEnvCard(IconData icon, String title, String subtitle, MaterialColor color) {
+  Widget _buildEnvCard(BuildContext context, IconData icon, String title, String subtitle, MaterialColor color) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
         decoration: BoxDecoration(
-          color: kSurfaceColor,
+          color: isDark ? kDarkCardColor : kSurfaceColor,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.grey.shade200),
+          border: Border.all(color: isDark ? kDarkBorderSubtle : Colors.grey.shade200),
         ),
         child: Column(
           children: [

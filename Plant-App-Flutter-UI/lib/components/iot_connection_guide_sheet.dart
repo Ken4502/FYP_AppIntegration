@@ -19,12 +19,13 @@ class _IotConnectionModesGuideSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       constraints: BoxConstraints(maxHeight: size.height * 0.88),
-      decoration: const BoxDecoration(
-        color: kSurfaceColor,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: isDark ? kDarkSurfaceColor : kSurfaceColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -93,14 +94,14 @@ class _IotConnectionModesGuideSheet extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: Colors.blue.shade50.withValues(alpha: 0.7),
+                    color: isDark ? const Color(0xFF0C243B) : Colors.blue.shade50.withValues(alpha: 0.7),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.blue.shade200),
+                    border: Border.all(color: isDark ? const Color(0xFF1E3A8A) : Colors.blue.shade200),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.lightbulb_outline_rounded, color: Colors.blue.shade800, size: 20),
+                      Icon(Icons.lightbulb_outline_rounded, color: isDark ? Colors.blue.shade300 : Colors.blue.shade800, size: 20),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
@@ -111,14 +112,14 @@ class _IotConnectionModesGuideSheet extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.blue.shade900,
+                                color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
                               ),
                             ),
                             const SizedBox(height: 3),
-                            const Text(
+                            Text(
                               '• Connect to the IoT Hotspot ONLY during initial setup or to reconfigure/delete Wi-Fi.\n'
                               '• Keep both phone and ESP32 on your Wi-Fi Network for all daily plant care, live sensor data, and watering!',
-                              style: TextStyle(fontSize: 11.5, color: Color(0xFF1E3A8A), height: 1.4),
+                              style: TextStyle(fontSize: 11.5, color: isDark ? Colors.blue.shade100 : const Color(0xFF1E3A8A), height: 1.4),
                             ),
                           ],
                         ),
@@ -130,6 +131,7 @@ class _IotConnectionModesGuideSheet extends StatelessWidget {
 
                 // MODE 1: IoT HOTSPOT
                 _buildModeSection(
+                  context: context,
                   badgeColor: const Color(0xFFD97706),
                   badgeText: 'SETUP ONLY • DIRECT PEER-TO-PEER',
                   icon: Icons.wifi_tethering_rounded,
@@ -167,6 +169,7 @@ class _IotConnectionModesGuideSheet extends StatelessWidget {
 
                 // MODE 2: WI-FI NETWORK CONNECTION
                 _buildModeSection(
+                  context: context,
                   badgeColor: kStatusSuccess,
                   badgeText: 'EVERYDAY USE • FULL ONLINE TELEMETRY',
                   icon: Icons.wifi_rounded,
@@ -240,6 +243,7 @@ class _IotConnectionModesGuideSheet extends StatelessWidget {
   }
 
   Widget _buildModeSection({
+    required BuildContext context,
     required Color badgeColor,
     required String badgeText,
     required IconData icon,
@@ -247,10 +251,11 @@ class _IotConnectionModesGuideSheet extends StatelessWidget {
     required String subtitle,
     required List<_FeatureItem> features,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: kBackgroundColor,
+        color: isDark ? kDarkSurfaceColor : kBackgroundColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: badgeColor.withValues(alpha: 0.35)),
       ),
@@ -286,7 +291,7 @@ class _IotConnectionModesGuideSheet extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       title,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: kTextPrimary),
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? kDarkTextPrimary : kTextPrimary),
                     ),
                   ],
                 ),
@@ -296,15 +301,15 @@ class _IotConnectionModesGuideSheet extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             subtitle,
-            style: const TextStyle(fontSize: 11, color: kTextSecondary, height: 1.3),
+            style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : kTextSecondary, height: 1.3),
           ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: kSurfaceColor,
+              color: isDark ? kDarkCardColor : kSurfaceColor,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: kBorderSubtle),
+              border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
             ),
             child: Column(
               children: features.map((f) => _buildFeatureRow(f)).toList(),

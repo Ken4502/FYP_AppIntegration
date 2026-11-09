@@ -30,6 +30,7 @@ class OrderHistoryDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.isDarkMode;
     if (order != null) {
       return _buildContent(context, order!);
     }
@@ -40,7 +41,7 @@ class OrderHistoryDetailScreen extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Scaffold(
-            backgroundColor: kBackgroundColor,
+            backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
             appBar: StandardAppBar(title: 'Order $orderId', toolbarHeight: 68),
             body: const Center(
               child: Column(
@@ -62,7 +63,7 @@ class OrderHistoryDetailScreen extends StatelessWidget {
               : 'Order record #$orderId could not be located in your Firebase Firestore database.';
 
           return Scaffold(
-            backgroundColor: kBackgroundColor,
+            backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
             appBar: StandardAppBar(title: 'Order $orderId', toolbarHeight: 68),
             body: Center(
               child: Padding(
@@ -72,15 +73,23 @@ class OrderHistoryDetailScreen extends StatelessWidget {
                   children: [
                     Icon(Icons.search_off_rounded, size: 72, color: Colors.orange.shade800),
                     const SizedBox(height: 18),
-                    const Text(
+                    Text(
                       'Unable to Query Firebase Order',
-                      style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: kTextPrimary),
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? kDarkTextPrimary : kTextPrimary,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Text(
                       errorDetails,
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade700, height: 1.4),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? kDarkTextSecondary : Colors.grey.shade700,
+                        height: 1.4,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
@@ -108,6 +117,7 @@ class OrderHistoryDetailScreen extends StatelessWidget {
 
   Widget _buildContent(BuildContext context, OrderModel order) {
     final theme = Theme.of(context);
+    final isDark = context.isDarkMode;
     final dateStr = order.createdAt != null
         ? 'Placed on ${order.createdAt!.toLocal().toString().split(" ")[0]}'
         : 'Order Details';
@@ -115,7 +125,7 @@ class OrderHistoryDetailScreen extends StatelessWidget {
     final isCancellable = order.status.toLowerCase() == 'processing' || order.status.toLowerCase() == 'pending';
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: StandardAppBar(
         title: 'Order #${order.id}',
         subtitle: dateStr,
@@ -464,27 +474,40 @@ class OrderHistoryDetailScreen extends StatelessWidget {
   }
 
   Widget _buildStatusTracker(BuildContext context, String currentStatus) {
+    final isDark = context.isDarkMode;
     final statusLower = currentStatus.toLowerCase();
 
     if (statusLower == 'cancelled') {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.red.shade50,
+          color: isDark ? const Color(0xFF3B1E1E) : Colors.red.shade50,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.red.shade200),
+          border: Border.all(color: isDark ? const Color(0xFF6B2B2B) : Colors.red.shade200),
         ),
         child: Row(
           children: [
-            Icon(Icons.cancel_outlined, color: Colors.red.shade700, size: 28),
+            Icon(Icons.cancel_outlined, color: isDark ? const Color(0xFFEF9A9A) : Colors.red.shade700, size: 28),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Order Cancelled in Firebase', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red.shade900)),
+                  Text(
+                    'Order Cancelled in Firebase',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? const Color(0xFFFFCDD2) : Colors.red.shade900,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text('This order was cancelled in Firestore and will not be fulfilled.', style: TextStyle(color: Colors.red.shade700, fontSize: 12)),
+                  Text(
+                    'This order was cancelled in Firestore and will not be fulfilled.',
+                    style: TextStyle(
+                      color: isDark ? const Color(0xFFEF9A9A) : Colors.red.shade700,
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -506,9 +529,9 @@ class OrderHistoryDetailScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
       decoration: BoxDecoration(
-        color: theme.cardColor,
+        color: isDark ? kDarkCardColor : theme.cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : Colors.grey.shade200),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -531,11 +554,11 @@ class OrderHistoryDetailScreen extends StatelessWidget {
                 radius: 18,
                 backgroundColor: isCompleted
                     ? theme.colorScheme.primary
-                    : Colors.grey.shade300,
+                    : (isDark ? kDarkSurfaceColor : Colors.grey.shade300),
                 child: Icon(
                   icon,
                   size: 18,
-                  color: isCompleted ? Colors.white : Colors.grey.shade600,
+                  color: isCompleted ? Colors.white : (isDark ? kDarkTextSecondary : Colors.grey.shade600),
                 ),
               ),
               const SizedBox(height: 6),
@@ -544,7 +567,7 @@ class OrderHistoryDetailScreen extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                  color: isCompleted ? theme.colorScheme.primary : Colors.grey,
+                  color: isCompleted ? theme.colorScheme.primary : (isDark ? kDarkTextSecondary : Colors.grey),
                 ),
               ),
             ],

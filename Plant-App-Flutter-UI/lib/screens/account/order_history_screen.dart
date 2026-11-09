@@ -80,11 +80,12 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final user = FirebaseAuth.instance.currentUser;
+    final isDark = context.isDarkMode;
 
     // 1. If not authenticated with Firebase Auth, guide user to login
     if (user == null) {
       return Scaffold(
-        backgroundColor: kBackgroundColor,
+        backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
         appBar: const StandardAppBar(
           title: 'Order History',
           subtitle: 'Past purchases, receipts & fulfillment status',
@@ -98,16 +99,24 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
               children: [
                 Icon(Icons.lock_person_outlined, size: 76, color: Colors.blueGrey.shade400),
                 const SizedBox(height: 20),
-                const Text(
+                Text(
                   'Firebase Account Required',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: kTextPrimary),
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? kDarkTextPrimary : kTextPrimary,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Your order history is stored securely in Firebase Cloud Firestore. Please sign in to view your orders and live tracking.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13, height: 1.4),
+                  style: TextStyle(
+                    color: isDark ? kDarkTextSecondary : Colors.grey.shade600,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
@@ -136,7 +145,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
     // 2. Real-time Firebase Firestore Stream
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: StandardAppBar(
         title: 'Order History',
         subtitle: 'Stored directly in Firebase Cloud Firestore',
@@ -220,7 +229,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
             children: [
               // Filter Chips Strip
               Container(
-                color: kSurfaceColor,
+                color: isDark ? kDarkSurfaceColor : kSurfaceColor,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -242,12 +251,12 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                              color: isSelected ? Colors.white : kTextPrimary,
+                              color: isSelected ? Colors.white : (isDark ? kDarkTextPrimary : kTextPrimary),
                             ),
                           ),
                           selected: isSelected,
                           selectedColor: kPrimaryColor,
-                          backgroundColor: kBackgroundColor,
+                          backgroundColor: isDark ? kDarkCardColor : kBackgroundColor,
                           showCheckmark: false,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                           onSelected: (val) {
@@ -366,6 +375,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   }
 
   Widget _buildOrdersList(List<OrderModel> orders, ThemeData theme, String userId) {
+    final isDark = context.isDarkMode;
     return ListView.builder(
       padding: const EdgeInsets.all(16.0),
       itemCount: orders.length,
@@ -377,8 +387,12 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
         return Card(
           margin: const EdgeInsets.only(bottom: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          elevation: 1.5,
+          color: isDark ? kDarkCardColor : kSurfaceColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: isDark ? const BorderSide(color: kDarkBorderSubtle) : BorderSide.none,
+          ),
+          elevation: isDark ? 0 : 1.5,
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
             onTap: () {
@@ -404,10 +418,10 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                           const SizedBox(width: 8),
                           Text(
                             'Order #${order.id}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
-                              color: kTextPrimary,
+                              color: isDark ? kDarkTextPrimary : kTextPrimary,
                             ),
                           ),
                         ],
@@ -434,10 +448,10 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                   // Item preview summary
                   Text(
                     additionalCount > 0 ? '$firstItemName + $additionalCount more' : firstItemName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
-                      color: kTextPrimary,
+                      color: isDark ? kDarkTextPrimary : kTextPrimary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -447,15 +461,15 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                   // Date
                   Row(
                     children: [
-                      Icon(Icons.calendar_today_outlined, size: 13, color: Colors.grey.shade600),
+                      Icon(Icons.calendar_today_outlined, size: 13, color: isDark ? kDarkTextSecondary : Colors.grey.shade600),
                       const SizedBox(width: 6),
                       Text(
                         _formatDate(order.createdAt),
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : Colors.grey.shade600),
                       ),
                     ],
                   ),
-                  const Divider(height: 20),
+                  Divider(height: 20, color: isDark ? kDarkBorderSubtle : null),
 
                   // Bottom Row: Items count, Total Price, Chevron
                   Row(
@@ -464,7 +478,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                       Text(
                         '${order.totalItemCount} ${order.totalItemCount == 1 ? "item" : "items"}',
                         style: TextStyle(
-                          color: Colors.grey.shade700,
+                          color: isDark ? kDarkTextSecondary : Colors.grey.shade700,
                           fontSize: 13,
                         ),
                       ),
@@ -479,7 +493,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                             ),
                           ),
                           const SizedBox(width: 4),
-                          const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+                          Icon(Icons.chevron_right, size: 20, color: isDark ? kDarkTextSecondary : Colors.grey),
                         ],
                       ),
                     ],

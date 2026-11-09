@@ -76,11 +76,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: AppBar(
         title: const Text('Account Recovery'),
-        backgroundColor: kSurfaceColor,
+        backgroundColor: isDark ? kDarkSurfaceColor : kSurfaceColor,
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
@@ -101,25 +102,25 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   child: const Icon(Icons.lock_reset_rounded, size: 54, color: kPrimaryColor),
                 ),
                 const SizedBox(height: 24),
-                const Text(
+                Text(
                   'Forgot Password?',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: isDark ? kDarkTextPrimary : kTextPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Enter your account email below. We will send you a secure link to reset your password.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.4),
+                  style: TextStyle(fontSize: 13, color: isDark ? kDarkTextSecondary : Colors.grey.shade600, height: 1.4),
                 ),
                 const SizedBox(height: 32),
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: kSurfaceColor,
+                    color: isDark ? kDarkCardColor : kSurfaceColor,
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
+                        color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),

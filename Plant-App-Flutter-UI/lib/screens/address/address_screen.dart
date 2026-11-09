@@ -114,13 +114,15 @@ class AddressScreenState extends State<AddressScreen> {
   @override
   Widget build(BuildContext context) {
     final currentUser = AuthService().currentUser;
+    final isDark = context.isDarkMode;
 
     if (currentUser == null) {
       return Scaffold(
-        backgroundColor: kBackgroundColor,
+        backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
         appBar: AppBar(
           title: const Text('Saved Addresses'),
-          backgroundColor: kSurfaceColor,
+          backgroundColor: isDark ? kDarkSurfaceColor : kSurfaceColor,
+          foregroundColor: isDark ? kDarkTextPrimary : kTextPrimary,
           elevation: 0,
         ),
         body: Center(
@@ -128,9 +130,10 @@ class AddressScreenState extends State<AddressScreen> {
             padding: const EdgeInsets.all(28.0),
             child: Card(
               elevation: 0,
+              color: isDark ? kDarkCardColor : kSurfaceColor,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
-                side: BorderSide(color: Colors.grey.shade200),
+                side: BorderSide(color: isDark ? kDarkBorderSubtle : Colors.grey.shade200),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(24.0),
@@ -139,15 +142,23 @@ class AddressScreenState extends State<AddressScreen> {
                   children: [
                     const Icon(Icons.location_off_outlined, size: 64, color: kPrimaryColor),
                     const SizedBox(height: 16),
-                    const Text(
+                    Text(
                       'Account Required',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kTextPrimary),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? kDarkTextPrimary : kTextPrimary,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Please log in or create an UrbanGreen account to manage saved delivery destinations.',
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.4),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? kDarkTextSecondary : Colors.grey.shade600,
+                        height: 1.4,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
@@ -181,10 +192,11 @@ class AddressScreenState extends State<AddressScreen> {
     final uid = currentUser.uid;
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: AppBar(
         title: const Text('Saved Addresses'),
-        backgroundColor: kSurfaceColor,
+        backgroundColor: isDark ? kDarkSurfaceColor : kSurfaceColor,
+        foregroundColor: isDark ? kDarkTextPrimary : kTextPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
@@ -252,11 +264,14 @@ class AddressScreenState extends State<AddressScreen> {
               final address = addresses[index];
               return Card(
                 margin: const EdgeInsets.only(bottom: 14),
-                elevation: 1,
+                color: isDark ? kDarkCardColor : kSurfaceColor,
+                elevation: isDark ? 0 : 1,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                   side: BorderSide(
-                    color: address.isDefault ? kPrimaryColor : Colors.grey.shade200,
+                    color: address.isDefault
+                        ? kPrimaryColor
+                        : (isDark ? kDarkBorderSubtle : Colors.grey.shade200),
                     width: address.isDefault ? 1.5 : 1,
                   ),
                 ),
@@ -272,10 +287,12 @@ class AddressScreenState extends State<AddressScreen> {
                           radius: 20,
                           backgroundColor: address.isDefault
                               ? kPrimaryColor.withValues(alpha: 0.12)
-                              : Colors.grey.shade100,
+                              : (isDark ? kDarkSurfaceColor : Colors.grey.shade100),
                           child: Icon(
                             address.isDefault ? Icons.location_on : Icons.location_on_outlined,
-                            color: address.isDefault ? kPrimaryColor : Colors.grey.shade600,
+                            color: address.isDefault
+                                ? kPrimaryColor
+                                : (isDark ? kDarkTextSecondary : Colors.grey.shade600),
                             size: 20,
                           ),
                         ),
@@ -289,7 +306,11 @@ class AddressScreenState extends State<AddressScreen> {
                                   Expanded(
                                     child: Text(
                                       address.street,
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                        color: isDark ? kDarkTextPrimary : null,
+                                      ),
                                     ),
                                   ),
                                   if (address.isDefault)
@@ -313,7 +334,10 @@ class AddressScreenState extends State<AddressScreen> {
                               const SizedBox(height: 4),
                               Text(
                                 '${address.city}, ${address.state} ${address.zipCode}',
-                                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: isDark ? kDarkTextSecondary : Colors.grey.shade600,
+                                ),
                               ),
                               if (!address.isDefault) ...[
                                 const SizedBox(height: 8),

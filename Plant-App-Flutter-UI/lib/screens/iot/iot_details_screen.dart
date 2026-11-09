@@ -536,8 +536,10 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.isDarkMode;
+
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -548,8 +550,8 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    kAccentMint.withValues(alpha: 0.55),
-                    kBackgroundColor,
+                    isDark ? kDarkSurfaceColor : kAccentMint.withValues(alpha: 0.55),
+                    isDark ? kDarkBackgroundColor : kBackgroundColor,
                   ],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
@@ -572,7 +574,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
+                                color: isDark ? kDarkTextSecondary : Colors.grey.shade700,
                               ),
                             ),
                             const SizedBox(height: 2),
@@ -581,10 +583,10 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                                 Flexible(
                                   child: Text(
                                     widget.device.name,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 24,
                                       fontWeight: FontWeight.w800,
-                                      color: kTextPrimary,
+                                      color: isDark ? kDarkTextPrimary : kTextPrimary,
                                       letterSpacing: -0.5,
                                     ),
                                     overflow: TextOverflow.ellipsis,
@@ -644,19 +646,22 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          color: kSurfaceColor,
+                          color: isDark ? kDarkCardColor : kSurfaceColor,
                           shape: BoxShape.circle,
-                          border: Border.all(color: kBorderSubtle, width: 1.2),
+                          border: Border.all(
+                            color: isDark ? kDarkBorderSubtle : kBorderSubtle,
+                            width: 1.2,
+                          ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.04),
+                              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
                               blurRadius: 6,
                               offset: const Offset(0, 2),
                             ),
                           ],
                         ),
                         child: IconButton(
-                          icon: const Icon(Icons.sync_rounded, color: kTextPrimary, size: 21),
+                          icon: Icon(Icons.sync_rounded, color: isDark ? kDarkTextPrimary : kTextPrimary, size: 21),
                           tooltip: 'Refresh Telemetry',
                           onPressed: _fetchTelemetry,
                         ),
@@ -670,12 +675,12 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                     height: 44,
                     padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(
-                      color: kSurfaceColor,
+                      color: isDark ? kDarkCardColor : kSurfaceColor,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: kBorderSubtle),
+                      border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.03),
+                          color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
                           blurRadius: 6,
                           offset: const Offset(0, 2),
                         ),
@@ -701,7 +706,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                         ],
                       ),
                       labelColor: Colors.white,
-                      unselectedLabelColor: kTextSecondary,
+                      unselectedLabelColor: isDark ? kDarkTextSecondary : kTextSecondary,
                       labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                       tabs: const [
                         Tab(
@@ -776,6 +781,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   // PANEL 2: DEVICE SETTINGS & NETWORK (WI-FI & DIAGNOSTICS)
   // =========================================================================
   Widget _buildDeviceAndWifiPanel() {
+    final isDark = context.isDarkMode;
     final stationIp = _service.savedStationIp ?? _service.targetDeviceIp;
     final homeSsid = widget.device.wifiSsid ?? _service.registeredHomeSsid ?? 'WenNikk-2.4Ghz';
 
@@ -788,9 +794,9 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: kSurfaceColor,
+              color: isDark ? kDarkCardColor : kSurfaceColor,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: kBorderSubtle),
+              border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
             ),
             child: Row(
               children: [
@@ -812,7 +818,11 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                           Flexible(
                             child: Text(
                               widget.device.name,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: kTextPrimary),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: isDark ? kDarkTextPrimary : kTextPrimary,
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
@@ -831,9 +841,9 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                         ],
                       ),
                       const SizedBox(height: 2),
-                      const Text(
+                      Text(
                         'This phone is registered as the main host and alert receiver.',
-                        style: TextStyle(fontSize: 11, color: kTextSecondary),
+                        style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : kTextSecondary),
                       ),
                     ],
                   ),
@@ -857,11 +867,12 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
 
   /// Collapsible Advanced Hardware Diagnostics at the bottom of Device & Wi-Fi tab
   Widget _buildAdvancedHardwareAccordion(String stationIp, String homeSsid) {
+    final isDark = context.isDarkMode;
     return Container(
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
       ),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -924,9 +935,9 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: kBackgroundColor,
+                color: isDark ? kDarkSurfaceColor : kBackgroundColor,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: kBorderSubtle),
+                border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -934,9 +945,13 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'Hardware & Network Specs',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: kTextPrimary),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: isDark ? kDarkTextPrimary : kTextPrimary,
+                        ),
                       ),
                       InkWell(
                         onTap: () {
@@ -955,17 +970,17 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                       ),
                     ],
                   ),
-                  const Divider(height: 16, color: kBorderSubtle),
+                  Divider(height: 16, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                   _buildConfigRow(Icons.developer_board_rounded, 'Device Model', 'ESP32-WROOM-32 (Xtensa Dual-Core)'),
-                  const Divider(height: 14, color: kBorderSubtle),
+                  Divider(height: 14, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                   _buildConfigRow(Icons.memory_rounded, 'Firmware Version', widget.device.firmwareVersion),
-                  const Divider(height: 14, color: kBorderSubtle),
+                  Divider(height: 14, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                   _buildConfigRow(Icons.wifi_rounded, 'Connected Wi-Fi', homeSsid),
-                  const Divider(height: 14, color: kBorderSubtle),
+                  Divider(height: 14, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                   _buildConfigRow(Icons.router_rounded, 'Station IP (Home LAN)', stationIp),
-                  const Divider(height: 14, color: kBorderSubtle),
+                  Divider(height: 14, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                   _buildConfigRow(Icons.wifi_tethering_rounded, 'SoftAP Gateway', '192.168.4.1'),
-                  const Divider(height: 14, color: kBorderSubtle),
+                  Divider(height: 14, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                   _buildConfigRow(
                     Icons.speed_rounded,
                     'Ping Status',
@@ -980,23 +995,43 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: kBackgroundColor,
+                color: isDark ? kDarkSurfaceColor : kBackgroundColor,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: kBorderSubtle),
+                border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Hardware Calibration & Relay', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: kTextPrimary)),
+                  Text(
+                    'Hardware Calibration & Relay',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      color: isDark ? kDarkTextPrimary : kTextPrimary,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Relay Trigger Polarity', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextPrimary)),
-                            Text('Active HIGH (3.3V) vs Active LOW (0V GND)', style: TextStyle(fontSize: 10.5, color: kTextSecondary)),
+                            Text(
+                              'Relay Trigger Polarity',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? kDarkTextPrimary : kTextPrimary,
+                              ),
+                            ),
+                            Text(
+                              'Active HIGH (3.3V) vs Active LOW (0V GND)',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                color: isDark ? kDarkTextSecondary : kTextSecondary,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -1007,14 +1042,24 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                       ),
                     ],
                   ),
-                  const Divider(height: 12, color: kBorderSubtle),
-                  const Row(
+                  Divider(height: 12, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+                  Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Sensor Range Calibration', style: TextStyle(fontSize: 11, color: kTextSecondary)),
+                      Text(
+                        'Sensor Range Calibration',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? kDarkTextSecondary : kTextSecondary,
+                        ),
+                      ),
                       Text(
                         'Dry: ${IotHybridConnectivityService.dryAdcValue} / Wet: ${IotHybridConnectivityService.wetAdcValue}',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: kTextPrimary),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? kDarkTextPrimary : kTextPrimary,
+                        ),
                       ),
                     ],
                   ),
@@ -1045,6 +1090,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
 
   /// Connect IoT to Network & Wi-Fi Configuration Card inside Device Details
   Widget _buildNetworkConnectionCard(String stationIp, String homeSsid) {
+    final isDark = context.isDarkMode;
     final bool hasWifi = widget.device.isWifiConnected &&
         widget.device.wifiSsid != null &&
         widget.device.wifiSsid!.isNotEmpty;
@@ -1052,12 +1098,16 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: hasWifi ? kBorderSubtle : const Color(0xFFFDE68A)),
+        border: Border.all(
+          color: hasWifi
+              ? (isDark ? kDarkBorderSubtle : kBorderSubtle)
+              : (isDark ? const Color(0xFF78350F) : const Color(0xFFFDE68A)),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -1239,9 +1289,9 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: kBackgroundColor,
+                color: isDark ? kDarkSurfaceColor : kBackgroundColor,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: kBorderSubtle),
+                border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1249,14 +1299,24 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'Wi-Fi Network Credentials',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextPrimary),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? kDarkTextPrimary : kTextPrimary,
+                        ),
                       ),
                       if (hasWifi)
                         InkWell(
                           onTap: () => setState(() => _showWifiForm = false),
-                          child: const Text('Cancel', style: TextStyle(fontSize: 11, color: kTextSecondary)),
+                          child: Text(
+                            'Cancel',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark ? kDarkTextSecondary : kTextSecondary,
+                            ),
+                          ),
                         ),
                     ],
                   ),
@@ -1291,8 +1351,8 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                             padding: const EdgeInsets.only(right: 6),
                             child: ActionChip(
                               label: Text(net.ssid, style: const TextStyle(fontSize: 11)),
-                              backgroundColor: Colors.white,
-                              side: BorderSide(color: Colors.grey.shade300),
+                              backgroundColor: Theme.of(context).brightness == Brightness.dark ? kDarkCardColor : Colors.white,
+                              side: BorderSide(color: Theme.of(context).brightness == Brightness.dark ? kDarkBorderSubtle : Colors.grey.shade300),
                               onPressed: () {
                                 setState(() {
                                   _wifiSsidController.text = net.ssid;
@@ -1421,12 +1481,14 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
       bannerIcon = Icons.snooze_rounded;
     }
 
+    final isDark = context.isDarkMode;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1435,10 +1497,12 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
             children: [
               CircleAvatar(
                 radius: 18,
-                backgroundColor: isAuto ? Colors.teal.shade50 : kPrimaryColor.withValues(alpha: 0.12),
+                backgroundColor: isAuto
+                    ? (isDark ? const Color(0xFF134E48) : Colors.teal.shade50)
+                    : (isDark ? kDarkSurfaceColor : kPrimaryColor.withValues(alpha: 0.12)),
                 child: Icon(
                   isAuto ? Icons.autorenew_rounded : Icons.water_drop_outlined,
-                  color: isAuto ? Colors.teal.shade700 : kPrimaryColor,
+                  color: isAuto ? Colors.tealAccent.shade400 : kPrimaryColor,
                   size: 20,
                 ),
               ),
@@ -1447,15 +1511,19 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Watering Mode & Soil Alerts',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kTextPrimary),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: isDark ? kDarkTextPrimary : kTextPrimary,
+                      ),
                     ),
                     Text(
                       isAuto
                           ? 'Auto watering active • Decision alerts disabled'
                           : 'Manual watering active • Configure decision alerts',
-                      style: const TextStyle(fontSize: 11, color: kTextSecondary),
+                      style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : kTextSecondary),
                     ),
                   ],
                 ),
@@ -1463,7 +1531,9 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isAuto ? Colors.teal.shade100 : Colors.orange.shade100,
+                  color: isAuto
+                      ? (isDark ? const Color(0xFF134E48) : Colors.teal.shade100)
+                      : (isDark ? const Color(0xFF451A03) : Colors.orange.shade100),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -1471,7 +1541,9 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
-                    color: isAuto ? Colors.teal.shade900 : Colors.orange.shade900,
+                    color: isAuto
+                        ? (isDark ? const Color(0xFF5EEAD4) : Colors.teal.shade900)
+                        : (isDark ? const Color(0xFFFDBA74) : Colors.orange.shade900),
                   ),
                 ),
               ),
@@ -1483,9 +1555,9 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
           Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: kBackgroundColor,
+              color: isDark ? kDarkSurfaceColor : kBackgroundColor,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: kBorderSubtle),
+              border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
             ),
             child: Row(
               children: [
@@ -2029,6 +2101,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   // PANEL 1: PLANT & HYDRATION CARE (PRIMARY & DEFAULT TAB)
   // =========================================================================
   Widget _buildPlantAndCarePanel() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final statusColor = _getMoistureColor(_moisturePercent);
     final statusLabel = _getMoistureStatusLabel(_moisturePercent);
 
@@ -2096,18 +2169,22 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: kSurfaceColor,
+              color: isDark ? kDarkCardColor : kSurfaceColor,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: kBorderSubtle),
+              border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
             ),
             child: Column(
               children: [
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         'Soil Moisture Level',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: kTextPrimary),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: isDark ? kDarkTextPrimary : kTextPrimary,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -2146,9 +2223,13 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                         height: 1.0,
                       ),
                     ),
-                    const Text(
+                    Text(
                       '%',
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kTextSecondary),
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? kDarkTextSecondary : kTextSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -2160,26 +2241,36 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                   child: LinearProgressIndicator(
                     value: (_moisturePercent / 100.0).clamp(0.0, 1.0),
                     minHeight: 14,
-                    backgroundColor: kBackgroundColor,
+                    backgroundColor: isDark ? kDarkSurfaceColor : kBackgroundColor,
                     valueColor: AlwaysStoppedAnimation<Color>(statusColor),
                   ),
                 ),
                 const SizedBox(height: 12),
 
                 // Friendly target & power info
-                const Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
                       'Ideal Target: 30% - 65%',
-                      style: TextStyle(fontSize: 11, color: kTextSecondary, fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? kDarkTextSecondary : kTextSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.bolt_rounded, size: 14, color: Color(0xFFD97706)),
-                        SizedBox(width: 4),
-                        Text('USB 5V Powered', style: TextStyle(fontSize: 11, color: kTextSecondary)),
+                        const Icon(Icons.bolt_rounded, size: 14, color: Color(0xFFD97706)),
+                        const SizedBox(width: 4),
+                        Text(
+                          'USB 5V Powered',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? kDarkTextSecondary : kTextSecondary,
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -2203,11 +2294,12 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
 
   /// Collapsible Sensor History & Diagnostics at the bottom of Plant & Care tab
   Widget _buildSensorDiagnosticsAccordion(Color statusColor) {
+    final isDark = context.isDarkMode;
     return Container(
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
       ),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -2223,19 +2315,30 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
             ),
             child: const Icon(Icons.analytics_outlined, color: kPrimaryColor, size: 20),
           ),
-          title: const Text(
+          title: Text(
             'Sensor History & Diagnostics',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: kTextPrimary),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: isDark ? kDarkTextPrimary : kTextPrimary,
+            ),
           ),
-          subtitle: const Text(
+          subtitle: Text(
             'Moisture history, raw ADC & polling controls',
-            style: TextStyle(fontSize: 11, color: kTextSecondary),
+            style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : kTextSecondary),
           ),
           children: [
-            const Divider(height: 1, color: kBorderSubtle),
+            Divider(height: 1, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
             const SizedBox(height: 12),
             if (_moistureHistory.isNotEmpty) ...[
-              const Text('Live Moisture History (30 samples)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: kTextPrimary)),
+              Text(
+                'Live Moisture History (30 samples)',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color: isDark ? kDarkTextPrimary : kTextPrimary,
+                ),
+              ),
               const SizedBox(height: 8),
               SizedBox(
                 height: 60,
@@ -2249,10 +2352,17 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Raw Sensor ADC', style: TextStyle(fontSize: 12, color: kTextSecondary)),
+                Text(
+                  'Raw Sensor ADC',
+                  style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                ),
                 Text(
                   '$_rawAdc (Range: 1100 wet - 3100 dry)',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextPrimary),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? kDarkTextPrimary : kTextPrimary,
+                  ),
                 ),
               ],
             ),
@@ -2260,12 +2370,25 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Auto-refresh Telemetry', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextPrimary)),
-                      Text('Continuously poll probe every 4 seconds', style: TextStyle(fontSize: 10.5, color: kTextSecondary)),
+                      Text(
+                        'Auto-refresh Telemetry',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? kDarkTextPrimary : kTextPrimary,
+                        ),
+                      ),
+                      Text(
+                        'Continuously poll probe every 4 seconds',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: isDark ? kDarkTextSecondary : kTextSecondary,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -2284,7 +2407,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                 label: const Text('View Full Activity Logs Tab ➔', style: TextStyle(fontSize: 11)),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: kPrimaryColor,
-                  side: const BorderSide(color: kBorderSubtle),
+                  side: BorderSide(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
@@ -2437,15 +2560,16 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   // ASSIGNED PLANT & SPECIMEN LINKING (STRICT 1-TO-1 MAPPING)
   // =========================================================================
   Widget _buildAssignedPlantSection() {
+    final isDark = context.isDarkMode;
     final Plant? assignedPlant = _plantService.getPlantForDevice(widget.device.id);
 
     if (assignedPlant == null) {
       return Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: kSurfaceColor,
+          color: isDark ? kDarkCardColor : kSurfaceColor,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: kBorderSubtle),
+          border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
         ),
         child: Column(
           children: [
@@ -2454,24 +2578,28 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
+                    color: isDark ? kDarkSurfaceColor : Colors.grey.shade100,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.yard_outlined, color: Colors.grey, size: 22),
+                  child: Icon(Icons.yard_outlined, color: isDark ? kDarkTextSecondary : Colors.grey, size: 22),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         'Assigned Specimen',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kTextPrimary),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: isDark ? kDarkTextPrimary : kTextPrimary,
+                        ),
                       ),
-                      SizedBox(height: 2),
+                      const SizedBox(height: 2),
                       Text(
                         'No plant linked to this probe',
-                        style: TextStyle(fontSize: 12, color: kTextSecondary),
+                        style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary),
                       ),
                     ],
                   ),
@@ -2479,20 +2607,24 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
+                    color: isDark ? kDarkSurfaceColor : Colors.grey.shade200,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Unassigned',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? kDarkTextSecondary : Colors.grey,
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'Link this IoT sensor to a specimen in your garden to track live hydration telemetry and automate watering routines.',
-              style: TextStyle(fontSize: 12, color: kTextSecondary, height: 1.4),
+              style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary, height: 1.4),
             ),
             const SizedBox(height: 14),
             SizedBox(
@@ -2517,7 +2649,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
       ),
@@ -2535,10 +2667,14 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                 child: const Icon(Icons.eco_rounded, color: kPrimaryColor, size: 18),
               ),
               const SizedBox(width: 8),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Assigned Specimen',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kTextPrimary),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: isDark ? kDarkTextPrimary : kTextPrimary,
+                  ),
                 ),
               ),
               Container(
@@ -2572,13 +2708,21 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                   children: [
                     Text(
                       assignedPlant.name,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kTextPrimary),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: isDark ? kDarkTextPrimary : kTextPrimary,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
                       assignedPlant.species,
-                      style: const TextStyle(fontSize: 12, color: kTextSecondary, fontStyle: FontStyle.italic),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? kDarkTextSecondary : kTextSecondary,
+                        fontStyle: FontStyle.italic,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
@@ -2590,14 +2734,17 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: kBackgroundColor,
+              color: isDark ? kDarkSurfaceColor : kBackgroundColor,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Row(
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Target Moisture Range: ', style: TextStyle(fontSize: 12, color: kTextSecondary)),
                 Text(
+                  'Target Moisture Range: ',
+                  style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                ),
+                const Text(
                   '30% - 65%',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryColor),
                 ),
@@ -2641,6 +2788,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   }
 
   void _showPlantAssignmentModal() {
+    final isDark = context.isDarkMode;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2653,9 +2801,9 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
           constraints: BoxConstraints(
             maxHeight: MediaQuery.of(sheetContext).size.height * 0.75,
           ),
-          decoration: const BoxDecoration(
-            color: kSurfaceColor,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          decoration: BoxDecoration(
+            color: isDark ? kDarkSurfaceColor : kSurfaceColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -2666,7 +2814,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
+                  color: isDark ? kDarkBorderSubtle : Colors.grey.shade300,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -2687,32 +2835,36 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Assign Specimen to Probe',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kTextPrimary),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: isDark ? kDarkTextPrimary : kTextPrimary,
+                            ),
                           ),
                           Text(
                             'Probe: ${widget.device.name} (Strict 1-to-1 link)',
-                            style: const TextStyle(fontSize: 12, color: kTextSecondary),
+                            style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary),
                           ),
                         ],
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close, size: 20),
+                      icon: Icon(Icons.close, size: 20, color: isDark ? kDarkTextPrimary : null),
                       onPressed: () => Navigator.pop(sheetContext),
                     ),
                   ],
                 ),
               ),
-              const Divider(height: 1),
+              Divider(height: 1, color: isDark ? kDarkBorderSubtle : null),
               if (plants.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(32),
+                Padding(
+                  padding: const EdgeInsets.all(32),
                   child: Text(
                     'No plants found in your garden. Add a plant from the Garden tab first!',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: kTextSecondary),
+                    style: TextStyle(color: isDark ? kDarkTextSecondary : kTextSecondary),
                   ),
                 )
               else
@@ -2731,12 +2883,16 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
 
                       return Container(
                         decoration: BoxDecoration(
-                          color: isCurrent ? kPrimaryColor.withValues(alpha: 0.08) : kBackgroundColor,
+                          color: isCurrent
+                              ? kPrimaryColor.withValues(alpha: 0.08)
+                              : (isDark ? kDarkCardColor : kBackgroundColor),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
                             color: isCurrent
                                 ? kPrimaryColor
-                                : (isAssignedToOther ? Colors.orange.shade300 : kBorderSubtle),
+                                : (isAssignedToOther
+                                    ? Colors.orange.shade300
+                                    : (isDark ? kDarkBorderSubtle : kBorderSubtle)),
                             width: isCurrent ? 1.5 : 1.0,
                           ),
                         ),
@@ -2748,12 +2904,19 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                           ),
                           title: Text(
                             plant.name,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kTextPrimary),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: isDark ? kDarkTextPrimary : kTextPrimary,
+                            ),
                           ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(plant.species, style: const TextStyle(fontSize: 12, color: kTextSecondary)),
+                              Text(
+                                plant.species,
+                                style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                              ),
                               const SizedBox(height: 2),
                               if (isCurrent)
                                 const Text(

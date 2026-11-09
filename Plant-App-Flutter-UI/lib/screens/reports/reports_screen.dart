@@ -23,8 +23,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.isDarkMode;
+
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: const StandardAppBar(
         title: 'Garden Analytics & Reports',
         subtitle: 'Comprehensive environmental telemetry',
@@ -171,30 +173,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
                 // Report 4: Export Summary Card
                 Card(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 1,
+                  color: isDark ? kDarkCardColor : kSurfaceColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: isDark ? const BorderSide(color: kDarkBorderSubtle) : BorderSide.none,
+                  ),
+                  elevation: isDark ? 0 : 1,
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Row(
                       children: [
                         CircleAvatar(
                           radius: 24,
-                          backgroundColor: Colors.amber.shade100,
-                          child: Icon(Icons.share_outlined, color: Colors.amber.shade900, size: 24),
+                          backgroundColor: isDark ? const Color(0xFF3E2723) : Colors.amber.shade100,
+                          child: Icon(
+                            Icons.share_outlined,
+                            color: isDark ? const Color(0xFFFFB74D) : Colors.amber.shade900,
+                            size: 24,
+                          ),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'Export Botanical Audit Report',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: kTextPrimary),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: isDark ? kDarkTextPrimary : kTextPrimary,
+                                ),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 'Generate and copy a comprehensive summary of all plants, hydration logs and hardware metrics',
-                                style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.3),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark ? kDarkTextSecondary : Colors.grey.shade700,
+                                  height: 1.3,
+                                ),
                               ),
                             ],
                           ),
@@ -261,9 +279,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
+    final isDark = context.isDarkMode;
     return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      elevation: 1,
+      color: isDark ? kDarkCardColor : kSurfaceColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: isDark ? const BorderSide(color: kDarkBorderSubtle) : BorderSide.none,
+      ),
+      elevation: isDark ? 0 : 1,
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
@@ -273,7 +296,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             children: [
               CircleAvatar(
                 radius: 24,
-                backgroundColor: iconColor.withValues(alpha: 0.12),
+                backgroundColor: iconColor.withValues(alpha: isDark ? 0.2 : 0.12),
                 child: Icon(icon, color: iconColor, size: 24),
               ),
               const SizedBox(width: 14),
@@ -283,17 +306,25 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: kTextPrimary),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: isDark ? kDarkTextPrimary : kTextPrimary,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.3),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? kDarkTextSecondary : Colors.grey.shade700,
+                        height: 1.3,
+                      ),
                     ),
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right, color: Colors.grey.shade600),
+              Icon(Icons.chevron_right, color: isDark ? kDarkTextSecondary : Colors.grey.shade600),
             ],
           ),
         ),

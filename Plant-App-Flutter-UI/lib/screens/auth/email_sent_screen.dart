@@ -7,11 +7,12 @@ class EmailSentScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: AppBar(
         title: const Text('Check Your Inbox'),
-        backgroundColor: kSurfaceColor,
+        backgroundColor: isDark ? kDarkSurfaceColor : kSurfaceColor,
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
@@ -34,15 +35,15 @@ class EmailSentScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 28.0),
-              const Text(
+              Text(
                 'Recovery Link Dispatched',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: isDark ? kDarkTextPrimary : kTextPrimary),
               ),
               const SizedBox(height: 12.0),
               Text(
                 'We have sent a secure password reset link to your email address. Please follow the instructions in the email to restore account access.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.5),
+                style: TextStyle(fontSize: 13, color: isDark ? kDarkTextSecondary : Colors.grey.shade600, height: 1.5),
               ),
               const SizedBox(height: 36.0),
               SizedBox(

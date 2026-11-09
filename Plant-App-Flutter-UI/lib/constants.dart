@@ -37,3 +37,14 @@ const double kDefaultPaddingExtraLarge = 40.0;
 const double kBorderRadius = 18.0;
 
 const Duration kDefaultDuration = Duration(milliseconds: 250);
+
+/// Helper extension for convenient, reactive theme-aware color resolution
+extension UrbanGreenThemeContext on BuildContext {
+  bool get isDarkMode => Theme.of(this).brightness == Brightness.dark;
+  Color get scaffoldBg => Theme.of(this).scaffoldBackgroundColor;
+  Color get surfaceBg => isDarkMode ? kDarkSurfaceColor : kSurfaceColor;
+  Color get cardBg => isDarkMode ? kDarkCardColor : kSurfaceColor;
+  Color get textPrimaryColor => isDarkMode ? kDarkTextPrimary : kTextPrimary;
+  Color get textSecondaryColor => isDarkMode ? kDarkTextSecondary : kTextSecondary;
+  Color get borderSubtleColor => isDarkMode ? kDarkBorderSubtle : kBorderSubtle;
+}

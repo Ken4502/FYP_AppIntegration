@@ -13,9 +13,10 @@ class CartScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final cart = context.watch<CartModel>();
     final theme = Theme.of(context);
+    final isDark = context.isDarkMode;
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: StandardAppBar(
         title: 'Your Cart',
         subtitle: '${cart.itemCount} item${cart.itemCount == 1 ? "" : "s"} ready for checkout',
@@ -29,9 +30,12 @@ class CartScreen extends StatelessWidget {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
-                    color: kBackgroundColor,
+                    color: isDark ? kDarkCardColor : kBackgroundColor,
                     shape: BoxShape.circle,
-                    border: Border.all(color: kBorderSubtle, width: 1.2),
+                    border: Border.all(
+                      color: isDark ? kDarkBorderSubtle : kBorderSubtle,
+                      width: 1.2,
+                    ),
                   ),
                   child: const Icon(Icons.delete_sweep_outlined, size: 20, color: kStatusDanger),
                 ),
@@ -84,7 +88,7 @@ class CartScreen extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     "Explore our botanical catalog and add supplies!",
-                    style: TextStyle(color: Colors.grey.shade700),
+                    style: TextStyle(color: isDark ? kDarkTextSecondary : Colors.grey.shade700),
                   ),
                   const SizedBox(height: 24),
                   ElevatedButton.icon(
@@ -120,19 +124,27 @@ class CartScreen extends StatelessWidget {
   }
 
   Widget _buildDeliveryBanner(BuildContext context, double total) {
+    final isDark = context.isDarkMode;
     final qualifiesForFree = total >= 50.00;
     final diff = 50.00 - total;
+
+    final bannerBg = isDark
+        ? (qualifiesForFree ? const Color(0xFF1B3828) : const Color(0xFF382315))
+        : (qualifiesForFree ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0));
+    final bannerFg = isDark
+        ? (qualifiesForFree ? const Color(0xFF81C784) : const Color(0xFFFFB74D))
+        : (qualifiesForFree ? const Color(0xFF2E7D32) : const Color(0xFFE65100));
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: qualifiesForFree ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0),
+      color: bannerBg,
       child: Row(
         children: [
           Icon(
             qualifiesForFree ? Icons.local_shipping : Icons.info_outline,
             size: 20,
-            color: qualifiesForFree ? const Color(0xFF2E7D32) : const Color(0xFFE65100),
+            color: bannerFg,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -143,7 +155,7 @@ class CartScreen extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: qualifiesForFree ? const Color(0xFF2E7D32) : const Color(0xFFE65100),
+                color: bannerFg,
               ),
             ),
           ),
@@ -165,11 +177,16 @@ class CartListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final cart = context.read<CartModel>();
     final theme = Theme.of(context);
+    final isDark = context.isDarkMode;
     final isNetwork = item.imageUrl.startsWith('http');
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: isDark ? const BorderSide(color: kDarkBorderSubtle, width: 1) : BorderSide.none,
+      ),
+      color: isDark ? kDarkCardColor : kSurfaceColor,
       child: Padding(
         padding: const EdgeInsets.all(10.0),
         child: Row(
@@ -185,16 +202,16 @@ class CartListItem extends StatelessWidget {
                         item.imageUrl,
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Container(
-                          color: Colors.grey.shade200,
-                          child: Icon(Icons.spa, color: Colors.grey.shade400, size: 28),
+                          color: isDark ? kDarkSurfaceColor : Colors.grey.shade200,
+                          child: Icon(Icons.spa, color: isDark ? kDarkTextSecondary : Colors.grey.shade400, size: 28),
                         ),
                       )
                     : Image.asset(
                         item.imageUrl.isNotEmpty ? item.imageUrl : 'assets/images/image_1.png',
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Container(
-                          color: Colors.grey.shade200,
-                          child: Icon(Icons.spa, color: Colors.grey.shade400, size: 28),
+                          color: isDark ? kDarkSurfaceColor : Colors.grey.shade200,
+                          child: Icon(Icons.spa, color: isDark ? kDarkTextSecondary : Colors.grey.shade400, size: 28),
                         ),
                       ),
               ),
@@ -211,6 +228,7 @@ class CartListItem extends StatelessWidget {
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
+                      color: isDark ? kDarkTextPrimary : null,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -224,7 +242,10 @@ class CartListItem extends StatelessWidget {
                   ),
                   Text(
                     'Item Total: RM ${(item.price * item.quantity).toStringAsFixed(2)}',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? kDarkTextSecondary : Colors.grey.shade700,
+                    ),
                   ),
                 ],
               ),
@@ -232,7 +253,7 @@ class CartListItem extends StatelessWidget {
             // Quantity Counter
             Container(
               decoration: BoxDecoration(
-                color: Colors.grey.shade100,
+                color: isDark ? kDarkSurfaceColor : Colors.grey.shade100,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -241,7 +262,7 @@ class CartListItem extends StatelessWidget {
                     iconSize: 18,
                     padding: const EdgeInsets.all(4),
                     constraints: const BoxConstraints(),
-                    icon: const Icon(Icons.remove),
+                    icon: Icon(Icons.remove, color: isDark ? kDarkTextPrimary : null),
                     onPressed: () {
                       cart.decrementItem(item.productId);
                     },
@@ -250,14 +271,18 @@ class CartListItem extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     child: Text(
                       item.quantity.toString(),
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: isDark ? kDarkTextPrimary : null,
+                      ),
                     ),
                   ),
                   IconButton(
                     iconSize: 18,
                     padding: const EdgeInsets.all(4),
                     constraints: const BoxConstraints(),
-                    icon: const Icon(Icons.add),
+                    icon: Icon(Icons.add, color: isDark ? kDarkTextPrimary : null),
                     onPressed: () {
                       cart.addItem(item);
                     },
@@ -287,16 +312,18 @@ class CartTotal extends StatelessWidget {
   Widget build(BuildContext context) {
     final cart = context.watch<CartModel>();
     final theme = Theme.of(context);
+    final isDark = context.isDarkMode;
     final deliveryFee = cart.totalPrice >= 50.00 || cart.totalPrice == 0 ? 0.00 : 5.00;
     final grandTotal = cart.totalPrice + deliveryFee;
 
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
-        color: theme.cardColor,
+        color: isDark ? kDarkSurfaceColor : theme.cardColor,
+        border: isDark ? const Border(top: BorderSide(color: kDarkBorderSubtle, width: 1)) : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.08),
             spreadRadius: 1,
             blurRadius: 6,
             offset: const Offset(0, -2),
@@ -310,10 +337,10 @@ class CartTotal extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Subtotal", style: TextStyle(color: Colors.grey.shade700, fontSize: 14)),
+                Text("Subtotal", style: TextStyle(color: isDark ? kDarkTextSecondary : Colors.grey.shade700, fontSize: 14)),
                 Text(
                   'RM ${cart.totalPrice.toStringAsFixed(2)}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? kDarkTextPrimary : null),
                 ),
               ],
             ),
@@ -321,22 +348,30 @@ class CartTotal extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Estimated Delivery", style: TextStyle(color: Colors.grey.shade700, fontSize: 14)),
+                Text("Estimated Delivery", style: TextStyle(color: isDark ? kDarkTextSecondary : Colors.grey.shade700, fontSize: 14)),
                 Text(
                   deliveryFee == 0 ? 'FREE' : 'RM ${deliveryFee.toStringAsFixed(2)}',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
-                    color: deliveryFee == 0 ? const Color(0xFF2E7D32) : Colors.black87,
+                    color: deliveryFee == 0
+                        ? (isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32))
+                        : (isDark ? kDarkTextPrimary : Colors.black87),
                   ),
                 ),
               ],
             ),
-            const Divider(height: 16),
+            Divider(height: 16, color: isDark ? kDarkBorderSubtle : null),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Estimated Total", style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                Text(
+                  "Estimated Total",
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? kDarkTextPrimary : null,
+                  ),
+                ),
                 Text(
                   'RM ${grandTotal.toStringAsFixed(2)}',
                   style: theme.textTheme.titleLarge?.copyWith(

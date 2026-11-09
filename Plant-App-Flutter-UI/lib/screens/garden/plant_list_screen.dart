@@ -71,6 +71,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final myPlants = _plantService.myPlants;
     final filteredPlants = myPlants.where((p) {
       if (_searchFilter.isEmpty) return true;
@@ -81,7 +82,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
     final monitoredCount = myPlants.where((p) => p.iotDeviceId != null && p.iotDeviceId!.isNotEmpty).length;
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -92,8 +93,8 @@ class _PlantListScreenState extends State<PlantListScreen> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    kAccentMint.withValues(alpha: 0.55),
-                    kBackgroundColor,
+                    isDark ? kDarkSurfaceColor : kAccentMint.withValues(alpha: 0.55),
+                    isDark ? kDarkBackgroundColor : kBackgroundColor,
                   ],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
@@ -113,16 +114,16 @@ class _PlantListScreenState extends State<PlantListScreen> {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: Colors.grey.shade700,
+                              color: isDark ? kDarkTextSecondary : Colors.grey.shade700,
                             ),
                           ),
                           const SizedBox(height: 2),
-                          const Text(
+                          Text(
                             'Urban Sanctuary',
                             style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.w800,
-                              color: kTextPrimary,
+                              color: isDark ? kDarkTextPrimary : kTextPrimary,
                               letterSpacing: -0.5,
                             ),
                           ),
@@ -157,19 +158,19 @@ class _PlantListScreenState extends State<PlantListScreen> {
                       _buildMetricChip(
                         icon: Icons.eco,
                         label: '${myPlants.length} Plants',
-                        color: kPrimaryColor,
+                        color: isDark ? kSecondaryColor : kPrimaryColor,
                       ),
                       const SizedBox(width: 8),
                       _buildMetricChip(
                         icon: Icons.bluetooth_connected_rounded,
                         label: '$monitoredCount Monitored',
-                        color: monitoredCount > 0 ? Colors.green.shade800 : Colors.blue.shade700,
+                        color: monitoredCount > 0 ? (isDark ? const Color(0xFF66BB6A) : Colors.green.shade800) : (isDark ? const Color(0xFF90CAF9) : Colors.blue.shade700),
                       ),
                       const SizedBox(width: 8),
                       _buildMetricChip(
                         icon: Icons.health_and_safety,
                         label: '98% Health',
-                        color: const Color(0xFF2E7D32),
+                        color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
                       ),
                     ],
                   ),
@@ -188,12 +189,12 @@ class _PlantListScreenState extends State<PlantListScreen> {
                       child: Container(
                         height: 42,
                         decoration: BoxDecoration(
-                          color: kSurfaceColor,
+                          color: isDark ? kDarkSurfaceColor : kSurfaceColor,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: kBorderSubtle),
+                          border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.02),
+                              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
                               blurRadius: 4,
                               offset: const Offset(0, 2),
                             ),
@@ -205,14 +206,14 @@ class _PlantListScreenState extends State<PlantListScreen> {
                               _searchFilter = val.trim();
                             });
                           },
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             hintText: 'Search my botanical collection...',
-                            hintStyle: TextStyle(fontSize: 13, color: kTextSecondary),
-                            prefixIcon: Icon(Icons.search_rounded, size: 20, color: kPrimaryColor),
+                            hintStyle: TextStyle(fontSize: 13, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                            prefixIcon: Icon(Icons.search_rounded, size: 20, color: isDark ? kSecondaryColor : kPrimaryColor),
                             border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           ),
-                          style: const TextStyle(fontSize: 13, color: kTextPrimary),
+                          style: TextStyle(fontSize: 13, color: isDark ? kDarkTextPrimary : kTextPrimary),
                         ),
                       ),
                     ),
@@ -228,17 +229,17 @@ class _PlantListScreenState extends State<PlantListScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.yard_outlined, size: 72, color: Colors.grey.shade300),
+                      Icon(Icons.yard_outlined, size: 72, color: isDark ? Colors.white24 : Colors.grey.shade300),
                       const SizedBox(height: 16),
-                      const Text(
+                      Text(
                         'No Plants Found',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kTextPrimary),
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? kDarkTextPrimary : kTextPrimary),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         'Try searching for another species or add a new plant to your collection.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                        style: TextStyle(fontSize: 13, color: isDark ? kDarkTextSecondary : Colors.grey.shade600),
                       ),
                     ],
                   ),
@@ -309,6 +310,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
   }
 
   Widget _buildPlantCard(BuildContext context, Plant plant) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final bool hasIot = plant.iotDeviceId != null && plant.iotDeviceId!.isNotEmpty;
     IotDevice? probeDev;
     if (hasIot) {
@@ -323,16 +325,18 @@ class _PlantListScreenState extends State<PlantListScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: hasIot ? kPrimaryColor.withValues(alpha: 0.35) : kBorderSubtle,
+          color: hasIot
+              ? kPrimaryColor.withValues(alpha: 0.35)
+              : (isDark ? kDarkBorderSubtle : kBorderSubtle),
         ),
         boxShadow: [
           BoxShadow(
             color: hasIot
                 ? kPrimaryColor.withValues(alpha: 0.05)
-                : Colors.black.withValues(alpha: 0.03),
+                : Colors.black.withValues(alpha: isDark ? 0.25 : 0.03),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -379,10 +383,10 @@ class _PlantListScreenState extends State<PlantListScreen> {
                         children: [
                           Text(
                             plant.name,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.bold,
-                              color: kTextPrimary,
+                              color: isDark ? kDarkTextPrimary : kTextPrimary,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -422,14 +426,14 @@ class _PlantListScreenState extends State<PlantListScreen> {
                                       ? kPrimaryColor.withValues(alpha: 0.12)
                                       : (plant.reminderEnabled
                                           ? plant.wateringStatusColor.withValues(alpha: 0.12)
-                                          : Colors.grey.shade200),
+                                          : (isDark ? Colors.white10 : Colors.grey.shade200)),
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
                                     color: hasIot
                                         ? kPrimaryColor.withValues(alpha: 0.3)
                                         : (plant.reminderEnabled
                                             ? plant.wateringStatusColor.withValues(alpha: 0.3)
-                                            : Colors.grey.shade400),
+                                            : (isDark ? Colors.white24 : Colors.grey.shade400)),
                                   ),
                                 ),
                                 child: Row(
@@ -444,7 +448,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
                                       size: 10,
                                       color: hasIot
                                           ? kPrimaryColor
-                                          : (plant.reminderEnabled ? plant.wateringStatusColor : Colors.grey.shade600),
+                                          : (plant.reminderEnabled ? plant.wateringStatusColor : (isDark ? Colors.white60 : Colors.grey.shade600)),
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
@@ -458,7 +462,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
                                         fontWeight: FontWeight.bold,
                                         color: hasIot
                                             ? kPrimaryColor
-                                            : (plant.reminderEnabled ? plant.wateringStatusColor : Colors.grey.shade700),
+                                            : (plant.reminderEnabled ? plant.wateringStatusColor : (isDark ? Colors.white70 : Colors.grey.shade700)),
                                       ),
                                     ),
                                   ],
@@ -473,7 +477,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
                         plant.species,
                         style: TextStyle(
                           fontSize: 13,
-                          color: Colors.grey.shade600,
+                          color: isDark ? kDarkTextSecondary : Colors.grey.shade600,
                           fontWeight: FontWeight.w500,
                         ),
                       ),

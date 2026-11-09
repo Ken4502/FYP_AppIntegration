@@ -26,8 +26,9 @@ class _PlantHealthReportScreenState extends State<PlantHealthReportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: StandardAppBar(
         title: 'Botanical Health Report',
         subtitle: 'Canopy vigor, sensor telemetry & care schedules',
@@ -141,9 +142,9 @@ class _PlantHealthReportScreenState extends State<PlantHealthReportScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: kSurfaceColor,
+                    color: isDark ? kDarkCardColor : kSurfaceColor,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: kPrimaryColor.withValues(alpha: 0.2)),
+                    border: Border.all(color: isDark ? kDarkBorderSubtle : kPrimaryColor.withValues(alpha: 0.2)),
                   ),
                   child: Row(
                     children: [
@@ -280,6 +281,7 @@ class _PlantHealthReportScreenState extends State<PlantHealthReportScreen> {
   // CARD A: IOT MONITORED SPECIMEN (Real-Time Sensor Telemetry)
   // =========================================================================
   Widget _buildIotPlantCard(Plant plant) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final linkedDevice = _findLinkedDevice(plant.iotDeviceId);
     double moistureFraction = 0.50;
     if (linkedDevice?.moistureLevel != null) {
@@ -350,17 +352,17 @@ class _PlantHealthReportScreenState extends State<PlantHealthReportScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.teal.shade50,
+                color: isDark ? kDarkSurfaceColor : Colors.teal.shade50,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.sensors, size: 15, color: Colors.teal.shade800),
+                  Icon(Icons.sensors, size: 15, color: isDark ? Colors.teal.shade200 : Colors.teal.shade800),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       'Live Probe: ${linkedDevice?.name ?? plant.iotDeviceId} (${_iotService.isRealHardwareConnected ? "Online" : "Cached"})',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.teal.shade900),
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? Colors.teal.shade200 : Colors.teal.shade900),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -454,6 +456,7 @@ class _PlantHealthReportScreenState extends State<PlantHealthReportScreen> {
   // CARD B: MANUAL CARE SPECIMEN (Plants without IoT: strictly NO IoT telemetry!)
   // =========================================================================
   Widget _buildManualCarePlantCard(Plant plant) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final statusColor = plant.wateringStatusColor;
 
     return Card(
@@ -514,9 +517,9 @@ class _PlantHealthReportScreenState extends State<PlantHealthReportScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
-                color: kBackgroundColor,
+                color: isDark ? kDarkSurfaceColor : kBackgroundColor,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: kBorderSubtle),
+                border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
               ),
               child: Row(
                 children: [
@@ -726,6 +729,7 @@ class _PlantHealthReportScreenState extends State<PlantHealthReportScreen> {
   }
 
   Widget _buildMetricBar(String title, double pct, Color color, String valueText) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         Row(
@@ -733,7 +737,7 @@ class _PlantHealthReportScreenState extends State<PlantHealthReportScreen> {
           children: [
             Text(
               title,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.w500),
+              style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : Colors.grey.shade700, fontWeight: FontWeight.w500),
             ),
             Text(
               valueText,
@@ -746,7 +750,7 @@ class _PlantHealthReportScreenState extends State<PlantHealthReportScreen> {
           borderRadius: BorderRadius.circular(4),
           child: LinearProgressIndicator(
             value: pct.clamp(0.0, 1.0),
-            backgroundColor: Colors.grey.shade200,
+            backgroundColor: isDark ? kDarkBorderSubtle : Colors.grey.shade200,
             valueColor: AlwaysStoppedAnimation<Color>(color),
             minHeight: 6,
           ),
@@ -806,27 +810,28 @@ class _PlantHealthReportScreenState extends State<PlantHealthReportScreen> {
   }
 
   Widget _buildEmptyGardenState() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
       ),
       child: Center(
         child: Column(
           children: [
             const Icon(Icons.yard_outlined, size: 48, color: kPrimaryLight),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'No Garden Specimens Found',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kTextPrimary),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? kDarkTextPrimary : kTextPrimary),
             ),
             const SizedBox(height: 6),
             Text(
               'Add your first plant to your sanctuary or use the AI Leaf Scanner to assess botanical vigor.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              style: TextStyle(fontSize: 13, color: isDark ? kDarkTextSecondary : Colors.grey.shade600),
             ),
           ],
         ),
@@ -835,8 +840,10 @@ class _PlantHealthReportScreenState extends State<PlantHealthReportScreen> {
   }
 
   void _showScanSourceSheet() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
+      backgroundColor: isDark ? kDarkCardColor : kSurfaceColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
         return SafeArea(

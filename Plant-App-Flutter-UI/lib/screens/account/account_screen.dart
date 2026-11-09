@@ -247,12 +247,14 @@ class _AccountScreenState extends State<AccountScreen> {
   Widget build(BuildContext context) {
     final currentUser = _authService.currentUser;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     if (currentUser == null) {
       return _buildGuestAccountView();
     }
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       body: StreamBuilder<UserModel?>(
         stream: _userService.getUserProfileStream(currentUser.uid),
         builder: (context, snapshot) {
@@ -267,7 +269,7 @@ class _AccountScreenState extends State<AccountScreen> {
               SliverAppBar(
                 expandedHeight: 220,
                 pinned: true,
-                backgroundColor: kSurfaceColor,
+                backgroundColor: isDark ? kDarkSurfaceColor : kSurfaceColor,
                 surfaceTintColor: Colors.transparent,
                 flexibleSpace: FlexibleSpaceBar(
                   background: Container(
@@ -275,8 +277,8 @@ class _AccountScreenState extends State<AccountScreen> {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          kAccentMint.withValues(alpha: 0.6),
-                          kBackgroundColor,
+                          isDark ? kDarkSurfaceColor : kAccentMint.withValues(alpha: 0.6),
+                          isDark ? kDarkBackgroundColor : kBackgroundColor,
                         ],
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
@@ -321,17 +323,17 @@ class _AccountScreenState extends State<AccountScreen> {
                         const SizedBox(height: 10),
                         Text(
                           username,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
-                            color: kTextPrimary,
+                            color: isDark ? kDarkTextPrimary : kTextPrimary,
                           ),
                         ),
                         Text(
                           email,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey.shade600,
+                            color: isDark ? kDarkTextSecondary : Colors.grey.shade600,
                           ),
                         ),
                       ],
@@ -554,14 +556,16 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Widget _buildGuestAccountView() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
             expandedHeight: 220,
             pinned: true,
-            backgroundColor: kSurfaceColor,
+            backgroundColor: isDark ? kDarkSurfaceColor : kSurfaceColor,
             surfaceTintColor: Colors.transparent,
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
@@ -569,8 +573,8 @@ class _AccountScreenState extends State<AccountScreen> {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      kAccentMint.withValues(alpha: 0.6),
-                      kBackgroundColor,
+                      isDark ? kDarkSurfaceColor : kAccentMint.withValues(alpha: 0.6),
+                      isDark ? kDarkBackgroundColor : kBackgroundColor,
                     ],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
@@ -585,7 +589,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       child: const Icon(Icons.person_outline_rounded, size: 44, color: kPrimaryColor),
                     ),
                     const SizedBox(height: 10),
-                    const Row(
+                    Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
@@ -593,18 +597,18 @@ class _AccountScreenState extends State<AccountScreen> {
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
-                            color: kTextPrimary,
+                            color: isDark ? kDarkTextPrimary : kTextPrimary,
                           ),
                         ),
-                        SizedBox(width: 6),
-                        Icon(Icons.explore_outlined, color: kPrimaryColor, size: 18),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.explore_outlined, color: kPrimaryColor, size: 18),
                       ],
                     ),
                     Text(
                       'Browsing offline & local mode • No account linked',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey.shade600,
+                        color: isDark ? kDarkTextSecondary : Colors.grey.shade600,
                       ),
                     ),
                   ],
@@ -625,7 +629,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       borderRadius: BorderRadius.circular(16),
                       side: BorderSide(color: kPrimaryColor.withValues(alpha: 0.3)),
                     ),
-                    color: kSurfaceColor,
+                    color: isDark ? kDarkCardColor : kSurfaceColor,
                     child: Padding(
                       padding: const EdgeInsets.all(18.0),
                       child: Column(
@@ -966,6 +970,7 @@ class _AccountScreenState extends State<AccountScreen> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: CircleAvatar(
@@ -975,13 +980,13 @@ class _AccountScreenState extends State<AccountScreen> {
       ),
       title: Text(
         title,
-        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: isDark ? kDarkTextPrimary : kTextPrimary),
       ),
       subtitle: Text(
         subtitle,
-        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : Colors.grey.shade600),
       ),
-      trailing: const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+      trailing: Icon(Icons.chevron_right, size: 18, color: isDark ? kDarkTextSecondary : Colors.grey),
       onTap: onTap,
     );
   }

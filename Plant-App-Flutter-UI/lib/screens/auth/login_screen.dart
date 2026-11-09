@@ -108,8 +108,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -158,12 +159,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  const Text(
+                  Text(
                     'UrbanGreen',
                     style: TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.w800,
-                      color: kTextPrimary,
+                      color: isDark ? kDarkTextPrimary : kTextPrimary,
                       letterSpacing: -0.5,
                     ),
                   ),
@@ -173,7 +174,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade600,
+                      color: isDark ? kDarkTextSecondary : Colors.grey.shade600,
                     ),
                   ),
                   const SizedBox(height: 36),
@@ -182,12 +183,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   Container(
                     padding: const EdgeInsets.all(22),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: isDark ? kDarkCardColor : Colors.white,
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: kBorderSubtle),
+                      border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
+                          color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
                           blurRadius: 16,
                           offset: const Offset(0, 4),
                         ),
@@ -196,14 +197,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Welcome Back',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kTextPrimary),
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? kDarkTextPrimary : kTextPrimary),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           'Sign in to sync your garden & smart sensors',
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : Colors.grey.shade600),
                         ),
                         const SizedBox(height: 20),
 
@@ -332,7 +333,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      side: BorderSide(color: Colors.grey.shade300),
+                      side: BorderSide(color: isDark ? kDarkBorderSubtle : Colors.grey.shade300),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                     ),
                   ),
@@ -342,7 +343,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text("New to UrbanGreen?", style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
+                      Text("New to UrbanGreen?", style: TextStyle(color: isDark ? kDarkTextSecondary : Colors.grey.shade700, fontSize: 13)),
                       TextButton(
                         onPressed: _isLoading
                             ? null

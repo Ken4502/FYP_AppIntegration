@@ -149,12 +149,13 @@ Generated on: ${DateTime.now().toLocal()}
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.isDarkMode;
     final stationIp = _service.savedStationIp ?? _service.targetDeviceIp;
     final homeSsid = widget.device.wifiSsid ?? _service.registeredHomeSsid ?? 'WenNikk-2.4Ghz';
     final isOnline = _service.isRealHardwareConnected || widget.isConnected;
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -165,8 +166,8 @@ Generated on: ${DateTime.now().toLocal()}
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    kAccentMint.withValues(alpha: 0.55),
-                    kBackgroundColor,
+                    isDark ? kDarkSurfaceColor : kAccentMint.withValues(alpha: 0.55),
+                    isDark ? kDarkBackgroundColor : kBackgroundColor,
                   ],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
@@ -180,7 +181,7 @@ Generated on: ${DateTime.now().toLocal()}
                     children: [
                       StandardBackButton(onPressed: () => Navigator.maybePop(context)),
                       const SizedBox(width: 12),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -189,16 +190,16 @@ Generated on: ${DateTime.now().toLocal()}
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFF616161),
+                                color: isDark ? kDarkTextSecondary : const Color(0xFF616161),
                               ),
                             ),
-                            SizedBox(height: 2),
+                            const SizedBox(height: 2),
                             Text(
                               'Hardware & Network',
                               style: TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.w800,
-                                color: kTextPrimary,
+                                color: isDark ? kDarkTextPrimary : kTextPrimary,
                                 letterSpacing: -0.5,
                               ),
                             ),
@@ -210,19 +211,22 @@ Generated on: ${DateTime.now().toLocal()}
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          color: kSurfaceColor,
+                          color: isDark ? kDarkCardColor : kSurfaceColor,
                           shape: BoxShape.circle,
-                          border: Border.all(color: kBorderSubtle, width: 1.2),
+                          border: Border.all(
+                            color: isDark ? kDarkBorderSubtle : kBorderSubtle,
+                            width: 1.2,
+                          ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.04),
+                              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
                               blurRadius: 6,
                               offset: const Offset(0, 2),
                             ),
                           ],
                         ),
                         child: IconButton(
-                          icon: const Icon(Icons.copy_all_rounded, color: kTextPrimary, size: 21),
+                          icon: Icon(Icons.copy_all_rounded, color: isDark ? kDarkTextPrimary : kTextPrimary, size: 21),
                           tooltip: 'Copy Full Report',
                           onPressed: _copyFullReport,
                         ),
@@ -244,12 +248,12 @@ Generated on: ${DateTime.now().toLocal()}
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: kSurfaceColor,
+                        color: isDark ? kDarkCardColor : kSurfaceColor,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: kBorderSubtle),
+                        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.03),
+                            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -553,15 +557,16 @@ Generated on: ${DateTime.now().toLocal()}
   }
 
   Widget _buildInfoCard(List<Widget> children) {
+    final isDark = context.isDarkMode;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),

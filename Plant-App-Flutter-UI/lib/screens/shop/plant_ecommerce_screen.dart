@@ -267,10 +267,12 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
         final filteredFertilizer = _filterAndSort(fertilizerList);
         final filteredIot = _filterAndSort(iotList);
 
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+
         return DefaultTabController(
           length: 5,
           child: Scaffold(
-            backgroundColor: kBackgroundColor,
+            backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
             body: SafeArea(
               bottom: false,
               child: Column(
@@ -281,8 +283,8 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          kAccentMint.withValues(alpha: 0.55),
-                          kBackgroundColor,
+                          isDark ? kDarkSurfaceColor : kAccentMint.withValues(alpha: 0.55),
+                          isDark ? kDarkBackgroundColor : kBackgroundColor,
                         ],
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
@@ -302,16 +304,16 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
-                                    color: Colors.grey.shade700,
+                                    color: isDark ? kDarkTextSecondary : Colors.grey.shade700,
                                   ),
                                 ),
                                 const SizedBox(height: 2),
-                                const Text(
+                                Text(
                                   'UrbanGreen Store',
                                   style: TextStyle(
                                     fontSize: 24,
                                     fontWeight: FontWeight.w800,
-                                    color: kTextPrimary,
+                                    color: isDark ? kDarkTextPrimary : kTextPrimary,
                                     letterSpacing: -0.5,
                                   ),
                                 ),
@@ -325,19 +327,26 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                                   width: 44,
                                   height: 44,
                                   decoration: BoxDecoration(
-                                    color: kSurfaceColor,
+                                    color: isDark ? kDarkSurfaceColor : kSurfaceColor,
                                     shape: BoxShape.circle,
-                                    border: Border.all(color: kBorderSubtle, width: 1.2),
+                                    border: Border.all(
+                                      color: isDark ? kDarkBorderSubtle : kBorderSubtle,
+                                      width: 1.2,
+                                    ),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.04),
+                                        color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
                                         blurRadius: 6,
                                         offset: const Offset(0, 2),
                                       ),
                                     ],
                                   ),
                                   child: IconButton(
-                                    icon: const Icon(Icons.shopping_cart_outlined, color: kTextPrimary, size: 21),
+                                    icon: Icon(
+                                      Icons.shopping_cart_outlined,
+                                      color: isDark ? kDarkTextPrimary : kTextPrimary,
+                                      size: 21,
+                                    ),
                                     tooltip: 'View Cart',
                                     onPressed: () {
                                       Navigator.push(
@@ -379,12 +388,12 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                         Container(
                           height: 42,
                           decoration: BoxDecoration(
-                            color: kSurfaceColor,
+                            color: isDark ? kDarkSurfaceColor : kSurfaceColor,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: kBorderSubtle),
+                            border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.02),
+                                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
                                 blurRadius: 4,
                                 offset: const Offset(0, 2),
                               ),
@@ -399,11 +408,11 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                             },
                             decoration: InputDecoration(
                               hintText: 'Search plants, fertilizers, tools...',
-                              hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                              prefixIcon: const Icon(Icons.search_rounded, size: 20, color: kPrimaryColor),
+                              hintStyle: TextStyle(fontSize: 13, color: isDark ? kDarkTextSecondary : Colors.grey.shade600),
+                              prefixIcon: Icon(Icons.search_rounded, size: 20, color: isDark ? kSecondaryColor : kPrimaryColor),
                               suffixIcon: _searchQuery.isNotEmpty
                                   ? IconButton(
-                                      icon: const Icon(Icons.clear_rounded, size: 18, color: kTextSecondary),
+                                      icon: Icon(Icons.clear_rounded, size: 18, color: isDark ? kDarkTextSecondary : kTextSecondary),
                                       onPressed: () {
                                         _searchController.clear();
                                         setState(() {
@@ -415,7 +424,7 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                               border: InputBorder.none,
                               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                             ),
-                            style: const TextStyle(fontSize: 13, color: kTextPrimary),
+                            style: TextStyle(fontSize: 13, color: isDark ? kDarkTextPrimary : kTextPrimary),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -434,10 +443,10 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                                 duration: const Duration(milliseconds: 200),
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: _onlyInStock ? kPrimaryColor : kSurfaceColor,
+                                  color: _onlyInStock ? kPrimaryColor : (isDark ? kDarkSurfaceColor : kSurfaceColor),
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
-                                    color: _onlyInStock ? kPrimaryColor : kBorderSubtle,
+                                    color: _onlyInStock ? kPrimaryColor : (isDark ? kDarkBorderSubtle : kBorderSubtle),
                                   ),
                                 ),
                                 child: Row(
@@ -446,7 +455,7 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                                     Icon(
                                       _onlyInStock ? Icons.check_circle : Icons.tune_rounded,
                                       size: 13,
-                                      color: _onlyInStock ? Colors.white : kTextSecondary,
+                                      color: _onlyInStock ? Colors.white : (isDark ? kDarkTextSecondary : kTextSecondary),
                                     ),
                                     const SizedBox(width: 5),
                                     Text(
@@ -454,7 +463,7 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
-                                        color: _onlyInStock ? Colors.white : kTextPrimary,
+                                        color: _onlyInStock ? Colors.white : (isDark ? kDarkTextPrimary : kTextPrimary),
                                       ),
                                     ),
                                   ],
@@ -465,20 +474,20 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
-                                color: kPrimaryColor.withValues(alpha: 0.08),
+                                color: (isDark ? kSecondaryColor : kPrimaryColor).withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.auto_awesome, size: 11, color: kPrimaryColor),
+                                  Icon(Icons.auto_awesome, size: 11, color: isDark ? kSecondaryColor : kPrimaryColor),
                                   const SizedBox(width: 4),
                                   Text(
                                     'AI Ranked',
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
-                                      color: kPrimaryColor.withValues(alpha: 0.9),
+                                      color: isDark ? kSecondaryColor : kPrimaryColor.withValues(alpha: 0.9),
                                     ),
                                   ),
                                 ],
@@ -493,12 +502,12 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                           height: 42,
                           padding: const EdgeInsets.all(3),
                           decoration: BoxDecoration(
-                            color: kSurfaceColor,
+                            color: isDark ? kDarkSurfaceColor : kSurfaceColor,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: kBorderSubtle),
+                            border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.02),
+                                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
                                 blurRadius: 4,
                                 offset: const Offset(0, 1),
                               ),
@@ -522,7 +531,7 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                               ],
                             ),
                             labelColor: Colors.white,
-                            unselectedLabelColor: kTextSecondary,
+                            unselectedLabelColor: isDark ? kDarkTextSecondary : kTextSecondary,
                             labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                             tabs: [
                               Tab(
@@ -648,7 +657,7 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                 ),
                 Text(
                   subtitle,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade700, height: 1.2),
+                  style: TextStyle(fontSize: 11, color: Theme.of(context).brightness == Brightness.dark ? kDarkTextSecondary : Colors.grey.shade700, height: 1.2),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -947,15 +956,19 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE8F5E9),
+                              color: (Theme.of(context).brightness == Brightness.dark)
+                                  ? const Color(0xFF1B3828)
+                                  : const Color(0xFFE8F5E9),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               product.categories.first,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 9,
-                                color: Color(0xFF2E7D32),
+                                color: (Theme.of(context).brightness == Brightness.dark)
+                                    ? const Color(0xFF81C784)
+                                    : const Color(0xFF2E7D32),
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -1086,13 +1099,13 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE8F5E9),
+                      color: (Theme.of(ctx).brightness == Brightness.dark) ? const Color(0xFF1B3828) : const Color(0xFFE8F5E9),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFA5D6A7)),
+                      border: Border.all(color: (Theme.of(ctx).brightness == Brightness.dark) ? const Color(0xFF2E7D32) : const Color(0xFFA5D6A7)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.auto_awesome, size: 16, color: Color(0xFF2E7D32)),
+                        Icon(Icons.auto_awesome, size: 16, color: (Theme.of(ctx).brightness == Brightness.dark) ? const Color(0xFFA5D6A7) : const Color(0xFF2E7D32)),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Column(
@@ -1100,20 +1113,20 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                             children: [
                               Text(
                                 'RECOMMENDED FOR YOU • ${rec.badge.toUpperCase()}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF2E7D32),
+                                  color: (Theme.of(ctx).brightness == Brightness.dark) ? const Color(0xFFA5D6A7) : const Color(0xFF2E7D32),
                                   letterSpacing: 0.5,
                                 ),
                               ),
                               const SizedBox(height: 2),
                               Text(
                                 rec.reason,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
-                                  color: Color(0xFF1B5E20),
+                                  color: (Theme.of(ctx).brightness == Brightness.dark) ? const Color(0xFFE8F5E9) : const Color(0xFF1B5E20),
                                 ),
                               ),
                             ],

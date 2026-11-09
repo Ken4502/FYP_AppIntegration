@@ -20,8 +20,9 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: StandardAppBar(
         title: 'Watering & Irrigation',
         subtitle: 'Soil hydration cycles & consumption history',
@@ -79,16 +80,16 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                               decoration: BoxDecoration(
-                                color: Colors.blue.shade50,
+                                color: isDark ? kDarkSurfaceColor : Colors.blue.shade50,
                                 borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: Colors.blue.shade200),
+                                border: Border.all(color: isDark ? kDarkBorderSubtle : Colors.blue.shade200),
                               ),
                               child: Text(
                                 '$totalVolume ml Total',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.blue.shade900,
+                                  color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
                                 ),
                               ),
                             ),
@@ -166,12 +167,13 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
     required String title,
     required String value,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
       ),
       child: Row(
         children: [
@@ -187,12 +189,12 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
               children: [
                 Text(
                   title,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                  style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : Colors.grey.shade600, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   value,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: kTextPrimary),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: isDark ? kDarkTextPrimary : kTextPrimary),
                 ),
               ],
             ),
@@ -203,6 +205,7 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
   }
 
   Widget _buildDynamicWeeklyBarChart(List<Map<String, dynamic>> days) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     int maxMl = 0;
     for (final d in days) {
       final ml = d['ml'] as int? ?? 0;
@@ -228,7 +231,7 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
                 ml > 0 ? '$ml' : '-',
                 style: TextStyle(
                   fontSize: 10,
-                  color: hasWater ? Colors.blue.shade900 : Colors.grey.shade500,
+                  color: hasWater ? (isDark ? Colors.blue.shade300 : Colors.blue.shade900) : (isDark ? kDarkTextSecondary : Colors.grey.shade500),
                   fontWeight: hasWater ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
@@ -244,7 +247,7 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
                           end: Alignment.bottomCenter,
                         )
                       : null,
-                  color: hasWater ? null : Colors.grey.shade200,
+                  color: hasWater ? null : (isDark ? kDarkBorderSubtle : Colors.grey.shade200),
                   borderRadius: BorderRadius.circular(6),
                   boxShadow: hasWater
                       ? [
@@ -263,7 +266,7 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: hasWater ? kTextPrimary : Colors.grey.shade600,
+                  color: hasWater ? (isDark ? kDarkTextPrimary : kTextPrimary) : (isDark ? kDarkTextSecondary : Colors.grey.shade600),
                 ),
               ),
             ],
@@ -279,6 +282,7 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
       physics: const NeverScrollableScrollPhysics(),
       itemCount: logs.length,
       itemBuilder: (context, index) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         final event = logs[index];
         final isHardware = event.careMode.toLowerCase().contains('hardware') ||
             event.careMode.toLowerCase().contains('pump') ||
@@ -315,7 +319,7 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: isHardware ? kPrimaryLight.withValues(alpha: 0.15) : Colors.blue.shade50,
+                              color: isHardware ? kPrimaryLight.withValues(alpha: 0.15) : (isDark ? kDarkSurfaceColor : Colors.blue.shade50),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -323,7 +327,7 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
-                                color: isHardware ? kPrimaryColor : Colors.blue.shade800,
+                                color: isHardware ? kPrimaryColor : (isDark ? Colors.blue.shade300 : Colors.blue.shade800),
                               ),
                             ),
                           ),
@@ -333,7 +337,7 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
                         const SizedBox(height: 4),
                         Text(
                           event.notes!,
-                          style: TextStyle(fontSize: 11, color: Colors.grey.shade700, fontStyle: FontStyle.italic),
+                          style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : Colors.grey.shade700, fontStyle: FontStyle.italic),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -345,16 +349,16 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
+                    color: isDark ? kDarkSurfaceColor : Colors.blue.shade50,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.blue.shade100),
+                    border: Border.all(color: isDark ? kDarkBorderSubtle : Colors.blue.shade100),
                   ),
                   child: Text(
                     '${event.volumeMl} ml',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade900,
+                      color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
                     ),
                   ),
                 ),
@@ -417,27 +421,28 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
   }
 
   Widget _buildEmptyState() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
       ),
       child: Center(
         child: Column(
           children: [
             Icon(Icons.water_drop_outlined, size: 48, color: Colors.blue.shade300),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'No Hydration Logs Yet',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kTextPrimary),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? kDarkTextPrimary : kTextPrimary),
             ),
             const SizedBox(height: 6),
             Text(
               'Water your garden specimens or tap "Quick Log Hydration" to start tracking consumption cycles.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              style: TextStyle(fontSize: 13, color: isDark ? kDarkTextSecondary : Colors.grey.shade600),
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
@@ -467,6 +472,7 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
   }
 
   void _showQuickLogDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final plants = _plantService.myPlants;
     if (plants.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -497,9 +503,9 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
                 top: 20,
                 bottom: MediaQuery.of(modalCtx).viewInsets.bottom + 24,
               ),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              decoration: BoxDecoration(
+                color: isDark ? kDarkCardColor : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -508,9 +514,9 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'Record Hydration Event',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kTextPrimary),
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? kDarkTextPrimary : kTextPrimary),
                       ),
                       IconButton(
                         icon: const Icon(Icons.close),
@@ -526,13 +532,14 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
+                      border: Border.all(color: isDark ? kDarkBorderSubtle : Colors.grey.shade300),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<Plant>(
                         isExpanded: true,
                         value: selectedPlant,
+                        dropdownColor: isDark ? kDarkCardColor : Colors.white,
                         items: plants.map((p) {
                           return DropdownMenuItem<Plant>(
                             value: p,
@@ -571,9 +578,9 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
                       return ChoiceChip(
                         label: Text('$vol ml'),
                         selected: isSelected,
-                        selectedColor: Colors.blue.shade100,
+                        selectedColor: isDark ? Colors.blue.shade900.withValues(alpha: 0.5) : Colors.blue.shade100,
                         labelStyle: TextStyle(
-                          color: isSelected ? Colors.blue.shade900 : Colors.black87,
+                          color: isSelected ? (isDark ? Colors.blue.shade200 : Colors.blue.shade900) : (isDark ? kDarkTextPrimary : Colors.black87),
                           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                         ),
                         onSelected: (selected) {
@@ -598,7 +605,7 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
                         selected: isSelected,
                         selectedColor: kPrimaryLight.withValues(alpha: 0.2),
                         labelStyle: TextStyle(
-                          color: isSelected ? kPrimaryColor : Colors.black87,
+                          color: isSelected ? kPrimaryColor : (isDark ? kDarkTextPrimary : Colors.black87),
                           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                         ),
                         onSelected: (selected) {
