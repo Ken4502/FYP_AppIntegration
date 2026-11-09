@@ -21,6 +21,9 @@ class Product {
     this.stock = 10,
   });
 
+  bool get isSoldOut => stock <= 0;
+  bool get isAvailable => stock > 0;
+
   factory Product.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
     return Product(
