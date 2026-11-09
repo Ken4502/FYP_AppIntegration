@@ -849,7 +849,6 @@ class BatchBenchmarkManager:
 
             # Background candidate harvester & image downloader
             def harvester():
-                nonlocal target_count
                 taxa_pool = list(BOTANICAL_TAXON_MAP.items())
                 random.shuffle(taxa_pool)
 

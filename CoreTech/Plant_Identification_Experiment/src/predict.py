@@ -101,7 +101,6 @@ def get_tta_crops(img: Image.Image, image_size: int = 384) -> torch.Tensor:
     return torch.stack([norm(to_tensor(c)) for c in crops], dim=0)
 
 def predict_image(image_input, top_k: int = 5, return_preprocessed: bool = False, use_tta: bool = True, use_ensemble: bool = True):
-    global _cached_resolution
     swin_ckpt = EXPERIMENT_ROOT / "artifacts" / "best_model_swin.pth"
     if use_ensemble and swin_ckpt.exists():
         from src.ensemble_predict import predict_ensemble
