@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:urbangreen/firebase_options.dart';
 import 'package:urbangreen/models/cart_model.dart';
+import 'package:urbangreen/models/theme_provider.dart';
 import 'package:urbangreen/screens/auth/login_screen.dart';
 import 'package:urbangreen/screens/main/main_screen.dart';
 import 'package:urbangreen/services/care_log_service.dart';
@@ -67,15 +68,23 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider<CartModel>(
-      create: (context) => CartModel(),
-      child: MaterialApp(
-        navigatorKey: appNavigatorKey,
-        debugShowCheckedModeBanner: false,
-        title: 'UrbanGreen',
-        theme: AppTheme.lightTheme,
-        themeMode: ThemeMode.light,
-        home: const AuthWrapper(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<CartModel>(create: (_) => CartModel()),
+        ChangeNotifierProvider<ThemeProvider>(create: (_) => ThemeProvider()),
+      ],
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, child) {
+          return MaterialApp(
+            navigatorKey: appNavigatorKey,
+            debugShowCheckedModeBanner: false,
+            title: 'UrbanGreen',
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeProvider.themeMode,
+            home: const AuthWrapper(),
+          );
+        },
       ),
     );
   }

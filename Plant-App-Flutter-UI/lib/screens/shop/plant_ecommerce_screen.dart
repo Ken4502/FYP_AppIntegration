@@ -6,6 +6,7 @@ import 'package:urbangreen/models/cart_item_model.dart';
 import 'package:urbangreen/models/cart_model.dart';
 import 'package:urbangreen/models/product_model.dart';
 import 'package:urbangreen/screens/shop/cart_screen.dart';
+import 'package:urbangreen/services/achievement_service.dart';
 import 'package:urbangreen/services/plant_service.dart';
 import 'package:urbangreen/services/recommendation_service.dart';
 
@@ -977,6 +978,7 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                                 imageUrl: product.imageUrl,
                               );
                               cart.addItem(cartItem);
+                              AchievementService().recordStoreAction();
                               RecommendationService().recordInteraction(
                                 type: product.type,
                                 categories: product.categories,
@@ -1207,6 +1209,7 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                                 imageUrl: product.imageUrl,
                               ),
                             );
+                            AchievementService().recordStoreAction();
                             RecommendationService().recordInteraction(
                               type: product.type,
                               categories: product.categories,
