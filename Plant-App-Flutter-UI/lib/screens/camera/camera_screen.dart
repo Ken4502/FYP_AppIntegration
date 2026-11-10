@@ -179,7 +179,7 @@ class _CameraScreenState extends State<CameraScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Could not reach AI server at ${PlantApiService.serverUrl}.\n\nTo host on your laptop, run either:\n• "run_ai_backend.bat" (Local Wi-Fi at 192.168.1.9:8001)\n• "start_online_tunnel.bat" (Cloudflare Online Tunnel)\n\nOr tap "Host PC Wi-Fi" below to connect:',
+                              'Could not reach AI server at ${PlantApiService.serverUrl}.\n\nTo connect, either:\n• Tap "Host PC Wi-Fi (192.168.1.4)" if your phone and PC are on the same Wi-Fi.\n• Or run "run_ai_online_tunnel.bat" on your PC and paste the trycloudflare.com URL below:',
                               style: TextStyle(fontSize: 11, color: Colors.red.shade900, height: 1.3),
                             ),
                           ],
@@ -201,8 +201,8 @@ class _CameraScreenState extends State<CameraScreen> {
                           label: const Text('Online Cloud Tunnel (HTTPS)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0284C7))),
                           backgroundColor: const Color(0xFFF0F9FF),
                           onPressed: () {
-                            serverController.text = 'https://backed-strengthening-oecd-pos.trycloudflare.com';
-                            runTest('https://backed-strengthening-oecd-pos.trycloudflare.com');
+                            serverController.text = 'https://promotional-chocolate-born-zus.trycloudflare.com';
+                            runTest('https://promotional-chocolate-born-zus.trycloudflare.com');
                           },
                         ),
                         ActionChip(
@@ -212,15 +212,6 @@ class _CameraScreenState extends State<CameraScreen> {
                           onPressed: () {
                             serverController.text = 'http://192.168.1.4:8001';
                             runTest('http://192.168.1.4:8001');
-                          },
-                        ),
-                        ActionChip(
-                          avatar: const Icon(Icons.wifi_rounded, size: 15, color: kPrimaryColor),
-                          label: const Text('Host PC Wi-Fi (192.168.1.9:8001)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          backgroundColor: isDark ? kDarkSurfaceColor : kBackgroundColor,
-                          onPressed: () {
-                            serverController.text = 'http://192.168.1.9:8001';
-                            runTest('http://192.168.1.9:8001');
                           },
                         ),
                         ActionChip(
@@ -259,7 +250,7 @@ class _CameraScreenState extends State<CameraScreen> {
                       style: const TextStyle(fontSize: 13, color: kTextPrimary),
                       decoration: InputDecoration(
                         labelText: 'Active AI Server URL',
-                        hintText: 'http://192.168.1.9:8001 or Cloud Run URL',
+                        hintText: 'https://xxx.trycloudflare.com or http://192.168.1.4:8001',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         isDense: true,
                         suffixIcon: IconButton(

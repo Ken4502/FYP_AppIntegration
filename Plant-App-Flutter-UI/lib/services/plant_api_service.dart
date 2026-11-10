@@ -14,10 +14,11 @@ class PlantApiService {
   }
 
   /// Default API endpoint:
-  /// - Host Laptop Wi-Fi IP: http://192.168.1.9:8001 (Port 8001 PhytoCare Ultra)
+  /// - Host PC Wi-Fi IP: http://192.168.1.4:8001 (Port 8001 PhytoCare Ultra)
+  /// - Cloudflare Tunnel: https://promotional-chocolate-born-zus.trycloudflare.com
   /// - Google Cloud Run: https://phytonet-ai-792382083515.us-central1.run.app
   /// - Android Emulator: http://10.0.2.2:8001
-  static String _serverUrl = 'http://192.168.1.9:8001';
+  static String _serverUrl = 'http://192.168.1.4:8001';
 
   static String get serverUrl => _serverUrl;
 
@@ -25,11 +26,13 @@ class PlantApiService {
     final saved = WebHardwareBridge.loadStorage('ai_server_url');
     if (saved != null && saved.trim().isNotEmpty) {
       final trimmed = saved.trim();
-      // If phone has old 127.0.0.1 or expired tunnel in storage, auto-upgrade to host laptop Wi-Fi IP
-      if (!trimmed.contains('127.0.0.1') && !trimmed.contains('backed-strengthening-oecd-pos')) {
+      // If phone has old 127.0.0.1 or expired tunnel/old IP in storage, auto-upgrade to host PC Wi-Fi IP
+      if (!trimmed.contains('127.0.0.1') &&
+          !trimmed.contains('backed-strengthening-oecd-pos') &&
+          !trimmed.contains('192.168.1.9')) {
         _serverUrl = trimmed;
       } else {
-        _serverUrl = 'http://192.168.1.9:8001';
+        _serverUrl = 'http://192.168.1.4:8001';
       }
     }
   }
@@ -51,13 +54,14 @@ class PlantApiService {
     if (saved != null &&
         saved.trim().isNotEmpty &&
         !saved.contains('127.0.0.1') &&
-        !saved.contains('backed-strengthening-oecd-pos')) {
+        !saved.contains('backed-strengthening-oecd-pos') &&
+        !saved.contains('192.168.1.9')) {
       candidates.add(saved.trim());
     }
 
-    // High priority: Current Host PC Wi-Fi IP (Port 8001)
+    // High priority: Current Host PC Wi-Fi IP (Port 8001) and active Cloudflare Tunnel
+    candidates.add('https://promotional-chocolate-born-zus.trycloudflare.com');
     candidates.add('http://192.168.1.4:8001');
-    candidates.add('http://192.168.1.9:8001');
     // Google Cloud Run
     candidates.add('https://phytonet-ai-792382083515.us-central1.run.app');
     // Android Emulator Host Bridge
@@ -148,8 +152,8 @@ class PlantApiService {
     } on SocketException catch (e) {
       final isLocalLoopback = _serverUrl.contains('127.0.0.1');
       final tip = isLocalLoopback
-          ? 'Notice: "127.0.0.1" refers to this mobile device itself, not your host computer. For a physical phone, please switch to your PC Wi-Fi IP (http://192.168.1.9:8001) or deploy to Google Cloud Run.'
-          : 'Please ensure the CoreTech server is running (run_ai_backend.bat) or deployed to Google Cloud Run.';
+          ? 'Notice: "127.0.0.1" refers to this mobile device itself, not your host computer. For a physical phone, please switch to your PC Wi-Fi IP (http://192.168.1.4:8001) or use the Cloudflare Tunnel.'
+          : 'Please ensure the CoreTech server is running (run_ai_models.bat or run_ai_online_tunnel.bat).';
 
       throw Exception(
         'Unable to connect to CoreTech AI backend at $_serverUrl.\n\n$tip\n\nSocket Details: $e',
