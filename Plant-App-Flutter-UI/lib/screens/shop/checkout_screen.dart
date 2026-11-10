@@ -40,8 +40,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   void _showAddressPicker(List<Address> addresses, String uid) {
+    final isDark = context.isDarkMode;
     showModalBottomSheet(
       context: context,
+      backgroundColor: isDark ? kDarkSurfaceColor : kSurfaceColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -227,9 +229,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final cart = context.watch<CartModel>();
     final user = AuthService().currentUser;
 
+    final isDark = context.isDarkMode;
+
     if (user == null) {
       return Scaffold(
-        backgroundColor: kBackgroundColor,
+        backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
         appBar: const StandardAppBar(
           title: 'Checkout',
           subtitle: 'Sign in to complete order',
@@ -240,9 +244,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             padding: const EdgeInsets.all(28.0),
             child: Card(
               elevation: 0,
+              color: isDark ? kDarkCardColor : kSurfaceColor,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
-                side: BorderSide(color: Colors.grey.shade200),
+                side: BorderSide(color: isDark ? kDarkBorderSubtle : Colors.grey.shade200),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(24.0),
@@ -251,15 +256,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   children: [
                     const Icon(Icons.lock_person_outlined, size: 64, color: kPrimaryColor),
                     const SizedBox(height: 16),
-                    const Text(
+                    Text(
                       'Account Required for Checkout',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kTextPrimary),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? kDarkTextPrimary : kTextPrimary,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Please log in or create an UrbanGreen account to save your delivery address, track order dispatch, and complete payment.',
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.4),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? kDarkTextSecondary : Colors.grey.shade600,
+                        height: 1.4,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
@@ -295,7 +308,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final grandTotal = subtotal + deliveryFee;
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: const StandardAppBar(
         title: 'Checkout',
         subtitle: 'Review & complete your botanical order',
@@ -360,21 +373,30 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
                       if (addresses.isEmpty) {
                         return Card(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          color: Colors.amber.shade50,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: isDark ? const BorderSide(color: kDarkBorderSubtle) : BorderSide.none,
+                          ),
+                          color: isDark ? const Color(0xFF2A2016) : Colors.amber.shade50,
                           child: Padding(
                             padding: const EdgeInsets.all(16.0),
                             child: Column(
                               children: [
-                                const Text(
+                                Text(
                                   'No delivery address found.',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? const Color(0xFFFFCC80) : null,
+                                  ),
                                 ),
                                 const SizedBox(height: 4),
-                                const Text(
+                                Text(
                                   'Add your address so we know where to deliver your plants.',
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(fontSize: 12),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDark ? kDarkTextSecondary : null,
+                                  ),
                                 ),
                                 const SizedBox(height: 12),
                                 ElevatedButton.icon(

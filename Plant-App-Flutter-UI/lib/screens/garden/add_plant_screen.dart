@@ -11,8 +11,9 @@ class AddPlantScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: const StandardAppBar(
         title: 'Add New Specimen',
         subtitle: 'Identify, pick from library, or create manual entry',
@@ -24,19 +25,19 @@ class AddPlantScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Add to Your Garden',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w800,
-                  color: kTextPrimary,
+                  color: isDark ? kDarkTextPrimary : kTextPrimary,
                   letterSpacing: -0.5,
                 ),
               ),
               const SizedBox(height: 6),
               Text(
                 'Choose how you would like to catalog your new botanical companion.',
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.4),
+                style: TextStyle(fontSize: 13, color: isDark ? kDarkTextSecondary : Colors.grey.shade600, height: 1.4),
               ),
               const SizedBox(height: 28),
 
@@ -177,7 +178,7 @@ class AddPlantScreen extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600, height: 1.35),
+                      style: TextStyle(fontSize: 12, color: Theme.of(context).brightness == Brightness.dark ? kDarkTextSecondary : Colors.grey.shade600, height: 1.35),
                     ),
                   ],
                 ),

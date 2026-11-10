@@ -73,8 +73,10 @@ class _AutoWaterScheduleScreenState extends State<AutoWaterScheduleScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.isDarkMode;
+
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: const StandardAppBar(
         title: 'Hydration Schedule',
         subtitle: 'Automated valve & dispensing strategy',
@@ -90,7 +92,7 @@ class _AutoWaterScheduleScreenState extends State<AutoWaterScheduleScreen> {
           const SizedBox(height: 6),
           Text(
             'Choose how the smart valve determines when to dispense hydration.',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            style: TextStyle(fontSize: 13, color: isDark ? kDarkTextSecondary : Colors.grey.shade600),
           ),
           const SizedBox(height: 16),
 
@@ -123,9 +125,9 @@ class _AutoWaterScheduleScreenState extends State<AutoWaterScheduleScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: kSurfaceColor,
+                color: isDark ? kDarkCardColor : kSurfaceColor,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.shade200),
+                border: Border.all(color: isDark ? kDarkBorderSubtle : Colors.grey.shade200),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -144,7 +146,7 @@ class _AutoWaterScheduleScreenState extends State<AutoWaterScheduleScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Dispense Time', style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+                          Text('Dispense Time', style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : Colors.grey.shade700)),
                           const SizedBox(height: 2),
                           Text(
                             _selectedTime.format(context),
@@ -173,9 +175,9 @@ class _AutoWaterScheduleScreenState extends State<AutoWaterScheduleScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: kSurfaceColor,
+                color: isDark ? kDarkCardColor : kSurfaceColor,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.shade200),
+                border: Border.all(color: isDark ? kDarkBorderSubtle : Colors.grey.shade200),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -191,15 +193,19 @@ class _AutoWaterScheduleScreenState extends State<AutoWaterScheduleScreen> {
                         label: Text(freq),
                         selected: isSelected,
                         selectedColor: kPrimaryColor,
-                        backgroundColor: kBackgroundColor,
+                        backgroundColor: isDark ? kDarkSurfaceColor : kBackgroundColor,
                         labelStyle: TextStyle(
-                          color: isSelected ? Colors.white : kTextPrimary,
+                          color: isSelected ? Colors.white : (isDark ? kDarkTextPrimary : kTextPrimary),
                           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                           fontSize: 13,
                         ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
-                          side: BorderSide(color: isSelected ? kPrimaryColor : Colors.grey.shade300),
+                          side: BorderSide(
+                            color: isSelected
+                                ? kPrimaryColor
+                                : (isDark ? kDarkBorderSubtle : Colors.grey.shade300),
+                          ),
                         ),
                         onSelected: (selected) {
                           if (selected) {
@@ -244,6 +250,7 @@ class _AutoWaterScheduleScreenState extends State<AutoWaterScheduleScreen> {
     required String subtitle,
   }) {
     final isSelected = _selectedScheduleType == type;
+    final isDark = context.isDarkMode;
 
     return InkWell(
       onTap: () {
@@ -256,16 +263,18 @@ class _AutoWaterScheduleScreenState extends State<AutoWaterScheduleScreen> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: kSurfaceColor,
+          color: isDark ? kDarkCardColor : kSurfaceColor,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? kPrimaryColor : Colors.grey.shade200,
+            color: isSelected
+                ? kPrimaryColor
+                : (isDark ? kDarkBorderSubtle : Colors.grey.shade200),
             width: isSelected ? 2 : 1,
           ),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: kPrimaryColor.withValues(alpha: 0.1),
+                    color: kPrimaryColor.withValues(alpha: isDark ? 0.2 : 0.1),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),

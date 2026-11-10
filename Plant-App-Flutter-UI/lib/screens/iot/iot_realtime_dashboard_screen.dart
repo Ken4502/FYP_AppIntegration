@@ -295,9 +295,10 @@ class _IotRealtimeDashboardScreenState extends State<IotRealtimeDashboardScreen>
   @override
   Widget build(BuildContext context) {
     final isAuto = _mode == 'AUTO';
+    final isDark = context.isDarkMode;
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       body: RefreshIndicator(
         onRefresh: _fetchTelemetry,
         color: kPrimaryColor,
@@ -334,12 +335,13 @@ class _IotRealtimeDashboardScreenState extends State<IotRealtimeDashboardScreen>
   }
 
   Widget _buildLiveConnectionBar() {
+    final isDark = context.isDarkMode;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
       ),
       child: Row(
         children: [
@@ -417,23 +419,29 @@ class _IotRealtimeDashboardScreenState extends State<IotRealtimeDashboardScreen>
     final statusLabel = _getMoistureStatusLabel(_moisturePercent);
     final tipText = _getMoistureTip(_moisturePercent);
 
+    final isDark = context.isDarkMode;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(22),
-        side: const BorderSide(color: kBorderSubtle),
+        side: BorderSide(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
       ),
-      color: kSurfaceColor,
+      color: isDark ? kDarkCardColor : kSurfaceColor,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
         child: Column(
           children: [
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Soil Moisture Level',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: kTextPrimary),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: isDark ? kDarkTextPrimary : kTextPrimary,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -472,9 +480,13 @@ class _IotRealtimeDashboardScreenState extends State<IotRealtimeDashboardScreen>
                     height: 1.0,
                   ),
                 ),
-                const Text(
+                Text(
                   '%',
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: kTextSecondary),
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? kDarkTextSecondary : kTextSecondary,
+                  ),
                 ),
               ],
             ),
@@ -486,7 +498,7 @@ class _IotRealtimeDashboardScreenState extends State<IotRealtimeDashboardScreen>
               child: LinearProgressIndicator(
                 value: (_moisturePercent / 100.0).clamp(0.0, 1.0),
                 minHeight: 14,
-                backgroundColor: kBackgroundColor,
+                backgroundColor: isDark ? kDarkSurfaceColor : kBackgroundColor,
                 valueColor: AlwaysStoppedAnimation<Color>(statusColor),
               ),
             ),
@@ -520,22 +532,25 @@ class _IotRealtimeDashboardScreenState extends State<IotRealtimeDashboardScreen>
 
   Widget _buildPumpStatusCard() {
     final isWatering = _isPumpRunning;
+    final isDark = context.isDarkMode;
 
     return ScaleTransition(
       scale: isWatering ? _pulseAnimation : const AlwaysStoppedAnimation(1.0),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isWatering ? kStatusSuccess.withValues(alpha: 0.12) : kSurfaceColor,
+          color: isWatering
+              ? kStatusSuccess.withValues(alpha: 0.12)
+              : (isDark ? kDarkCardColor : kSurfaceColor),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: isWatering ? kStatusSuccess : kBorderSubtle,
+            color: isWatering ? kStatusSuccess : (isDark ? kDarkBorderSubtle : kBorderSubtle),
             width: isWatering ? 2 : 1,
           ),
           boxShadow: isWatering
               ? [
                   BoxShadow(
-                    color: kStatusSuccess.withValues(alpha: 0.25),
+                    color: kStatusSuccess.withValues(alpha: isDark ? 0.35 : 0.25),
                     blurRadius: 16,
                     spreadRadius: 2,
                   ),
@@ -590,13 +605,15 @@ class _IotRealtimeDashboardScreenState extends State<IotRealtimeDashboardScreen>
 
   /// Beginner-Friendly Action Section
   Widget _buildControlsCard(bool isAuto) {
+    final isDark = context.isDarkMode;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: kBorderSubtle),
+        side: BorderSide(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
       ),
-      color: kSurfaceColor,
+      color: isDark ? kDarkCardColor : kSurfaceColor,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -759,26 +776,32 @@ class _IotRealtimeDashboardScreenState extends State<IotRealtimeDashboardScreen>
 
   /// Collapsible Diagnostics Accordion keeping 100% of advanced features
   Widget _buildDiagnosticsAccordion() {
+    final isDark = context.isDarkMode;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: kBorderSubtle),
+        side: BorderSide(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
       ),
-      color: kSurfaceColor,
+      color: isDark ? kDarkCardColor : kSurfaceColor,
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           initiallyExpanded: _showDiagnostics,
           onExpansionChanged: (val) => setState(() => _showDiagnostics = val),
-          leading: const Icon(Icons.analytics_outlined, color: kTextSecondary),
-          title: const Text(
+          leading: Icon(Icons.analytics_outlined, color: isDark ? kDarkTextSecondary : kTextSecondary),
+          title: Text(
             'Hardware Diagnostics & Log',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kTextPrimary),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: isDark ? kDarkTextPrimary : kTextPrimary,
+            ),
           ),
-          subtitle: const Text(
+          subtitle: Text(
             'Sparkline trend, relay polarity, raw ADC, and event log',
-            style: TextStyle(fontSize: 11, color: kTextSecondary),
+            style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : kTextSecondary),
           ),
           children: [
             Padding(

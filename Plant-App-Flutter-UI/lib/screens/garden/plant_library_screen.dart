@@ -36,6 +36,7 @@ class _PlantLibraryScreenState extends State<PlantLibraryScreen> {
   }
 
   void _showCareSheet(BuildContext context, FloraSpecies species) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -43,9 +44,9 @@ class _PlantLibraryScreenState extends State<PlantLibraryScreen> {
       builder: (ctx) {
         final isNetwork = species.imageUrl.startsWith('http');
         return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          decoration: BoxDecoration(
+            color: isDark ? kDarkCardColor : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           padding: EdgeInsets.only(
             left: 20,
@@ -277,8 +278,9 @@ class _PlantLibraryScreenState extends State<PlantLibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: const StandardAppBar(
         title: 'Botanical Flora Library',
         subtitle: 'FloraNet-250 Encyclopedia & Care Guide',
@@ -298,7 +300,7 @@ class _PlantLibraryScreenState extends State<PlantLibraryScreen> {
               },
               decoration: InputDecoration(
                 hintText: 'Search 250 species by common or botanical name...',
-                hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                hintStyle: TextStyle(fontSize: 13, color: isDark ? kDarkTextSecondary : Colors.grey.shade500),
                 prefixIcon: const Icon(Icons.search, size: 20, color: kPrimaryColor),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
@@ -313,14 +315,14 @@ class _PlantLibraryScreenState extends State<PlantLibraryScreen> {
                     : null,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: isDark ? kDarkCardColor : Colors.white,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: kBorderSubtle),
+                  borderSide: BorderSide(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: kBorderSubtle),
+                  borderSide: BorderSide(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
@@ -349,16 +351,16 @@ class _PlantLibraryScreenState extends State<PlantLibraryScreen> {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                      color: isSelected ? Colors.white : kTextPrimary,
+                      color: isSelected ? Colors.white : (isDark ? kDarkTextPrimary : kTextPrimary),
                     ),
                   ),
                   selected: isSelected,
                   selectedColor: kPrimaryColor,
-                  backgroundColor: Colors.white,
+                  backgroundColor: isDark ? kDarkCardColor : Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                     side: BorderSide(
-                      color: isSelected ? kPrimaryColor : kBorderSubtle,
+                      color: isSelected ? kPrimaryColor : (isDark ? kDarkBorderSubtle : kBorderSubtle),
                     ),
                   ),
                   showCheckmark: false,

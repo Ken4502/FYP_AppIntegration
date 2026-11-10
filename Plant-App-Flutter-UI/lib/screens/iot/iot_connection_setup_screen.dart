@@ -469,9 +469,9 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: context.cardBg,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: context.borderSubtleColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -521,9 +521,9 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: kBackgroundColor,
+                  color: context.surfaceBg,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: kBorderSubtle),
+                  border: Border.all(color: context.borderSubtleColor),
                 ),
                 child: Row(
                   children: [
@@ -599,7 +599,7 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: kBackgroundColor,
+                color: context.surfaceBg,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Row(
@@ -627,7 +627,7 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
     final instance = status?.instance ?? IotNetworkInstance.remoteNoDeviceLinked;
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.scaffoldBg,
       body: RefreshIndicator(
         onRefresh: _probeActiveNetwork,
         color: kPrimaryColor,
@@ -1183,9 +1183,9 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: kBorderSubtle),
+        side: BorderSide(color: context.borderSubtleColor),
       ),
-      color: kSurfaceColor,
+      color: context.cardBg,
       child: Padding(
         padding: const EdgeInsets.all(18.0),
         child: Column(
@@ -1196,7 +1196,7 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
+                    color: context.surfaceBg,
                     shape: BoxShape.circle,
                   ),
                   child: Icon(Icons.eco_outlined, color: Colors.grey.shade700, size: 24),
@@ -1219,9 +1219,9 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: kBackgroundColor,
+                color: context.surfaceBg,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: kBorderSubtle),
+                border: Border.all(color: context.borderSubtleColor),
               ),
               child: const Text(
                 '1. Plug in your SmartPlant-ESP32 device.\n'
@@ -1321,9 +1321,9 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
-            side: const BorderSide(color: kBorderSubtle),
+            side: BorderSide(color: context.borderSubtleColor),
           ),
-          color: kSurfaceColor,
+          color: context.cardBg,
           child: Padding(
             padding: const EdgeInsets.all(18.0),
             child: Column(
@@ -1375,9 +1375,9 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: kBackgroundColor,
+                      color: context.surfaceBg,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: kBorderSubtle),
+                      border: Border.all(color: context.borderSubtleColor),
                     ),
                     child: Column(
                       children: [
@@ -1416,9 +1416,9 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
-            side: const BorderSide(color: kBorderSubtle),
+            side: BorderSide(color: context.borderSubtleColor),
           ),
-          color: kSurfaceColor,
+          color: context.cardBg,
           child: Padding(
             padding: const EdgeInsets.all(18.0),
             child: Column(
@@ -1659,9 +1659,9 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: context.cardBg,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: context.borderSubtleColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1710,7 +1710,7 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       decoration: BoxDecoration(
-                        color: kBackgroundColor,
+                        color: context.surfaceBg,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Row(
@@ -1780,9 +1780,9 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: kBorderSubtle),
+        side: BorderSide(color: context.borderSubtleColor),
       ),
-      color: kSurfaceColor,
+      color: context.cardBg,
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(

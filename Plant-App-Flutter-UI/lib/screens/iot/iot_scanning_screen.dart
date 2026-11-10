@@ -110,8 +110,10 @@ class _IotScanningScreenState extends State<IotScanningScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.isDarkMode;
+
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: StandardAppBar(
         title: 'ESP32 Node Discovery',
         subtitle: 'Local Wi-Fi Subnet Scanner',
@@ -124,9 +126,12 @@ class _IotScanningScreenState extends State<IotScanningScreen> {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: kBackgroundColor,
+                  color: isDark ? kDarkCardColor : kBackgroundColor,
                   shape: BoxShape.circle,
-                  border: Border.all(color: kBorderSubtle, width: 1.2),
+                  border: Border.all(
+                    color: isDark ? kDarkBorderSubtle : kBorderSubtle,
+                    width: 1.2,
+                  ),
                 ),
                 child: const Icon(Icons.refresh_rounded, size: 20, color: kPrimaryColor),
               ),
@@ -215,12 +220,12 @@ class _IotScanningScreenState extends State<IotScanningScreen> {
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: kSurfaceColor,
+                      color: isDark ? kDarkCardColor : kSurfaceColor,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: kPrimaryColor, width: 1.5),
                       boxShadow: [
                         BoxShadow(
-                          color: kPrimaryColor.withValues(alpha: 0.08),
+                          color: kPrimaryColor.withValues(alpha: isDark ? 0.2 : 0.08),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -384,15 +389,17 @@ class _IotScanningScreenState extends State<IotScanningScreen> {
     required IconData icon,
     Widget? actionButton,
   }) {
+    final isDark = context.isDarkMode;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -417,7 +424,11 @@ class _IotScanningScreenState extends State<IotScanningScreen> {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: kTextPrimary),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? kDarkTextPrimary : kTextPrimary,
+                  ),
                 ),
               ),
             ],
@@ -427,7 +438,11 @@ class _IotScanningScreenState extends State<IotScanningScreen> {
             padding: const EdgeInsets.only(left: 36),
             child: Text(
               description,
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade700, height: 1.35),
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? kDarkTextSecondary : Colors.grey.shade700,
+                height: 1.35,
+              ),
             ),
           ),
           if (actionButton != null)

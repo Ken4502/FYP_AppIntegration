@@ -613,7 +613,7 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.scaffoldBg,
       appBar: StandardAppBar(
         title: 'IoT Setup Wizard',
         subtitle: 'Step-by-step device provisioning',
@@ -631,11 +631,11 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen>
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: kBackgroundColor,
+                  color: context.surfaceBg,
                   shape: BoxShape.circle,
-                  border: Border.all(color: kBorderSubtle, width: 1.2),
+                  border: Border.all(color: context.borderSubtleColor, width: 1.2),
                 ),
-                child: const Icon(Icons.close_rounded, size: 20, color: kTextPrimary),
+                child: Icon(Icons.close_rounded, size: 20, color: context.textPrimaryColor),
               ),
               tooltip: 'Cancel Setup',
               onPressed: () => Navigator.pop(context),
@@ -664,7 +664,7 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen>
 
   Widget _buildStepperHeader() {
     return Container(
-      color: kSurfaceColor,
+      color: context.cardBg,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       child: Row(
         children: [
@@ -796,9 +796,9 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen>
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: kSurfaceColor,
+              color: context.cardBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: kBorderSubtle),
+              border: Border.all(color: context.borderSubtleColor),
             ),
             child: const Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -854,9 +854,9 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: kSurfaceColor,
+              color: context.cardBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: kBorderSubtle),
+              border: Border.all(color: context.borderSubtleColor),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1232,9 +1232,9 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen>
             Container(
               constraints: const BoxConstraints(maxHeight: 180),
               decoration: BoxDecoration(
-                color: kSurfaceColor,
+                color: context.cardBg,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: kBorderSubtle),
+                border: Border.all(color: context.borderSubtleColor),
               ),
               child: ListView.separated(
                 shrinkWrap: true,
@@ -1361,8 +1361,8 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen>
               hintText: 'e.g. My-Hotspot-2.4GHz',
               prefixIcon: const Icon(Icons.wifi_rounded, size: 20),
               filled: true,
-              fillColor: kSurfaceColor,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kBorderSubtle)),
+              fillColor: context.surfaceBg,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: context.borderSubtleColor)),
             ),
             onChanged: (_) => setState(() {}),
           ),
@@ -1381,8 +1381,8 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen>
                 onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
               ),
               filled: true,
-              fillColor: kSurfaceColor,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kBorderSubtle)),
+              fillColor: context.surfaceBg,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: context.borderSubtleColor)),
             ),
           ),
           const SizedBox(height: 14),
@@ -1506,9 +1506,9 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: kSurfaceColor,
+              color: context.cardBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: kBorderSubtle),
+              border: Border.all(color: context.borderSubtleColor),
             ),
             child: Column(
               children: [
@@ -1585,9 +1585,9 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen>
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: kSurfaceColor,
+            color: context.cardBg,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: kBorderSubtle),
+            border: Border.all(color: context.borderSubtleColor),
           ),
           child: Column(
             children: [

@@ -97,8 +97,10 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.isDarkMode;
+
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       body: SafeArea(
         child: ValueListenableBuilder<List<IotActivityLog>>(
           valueListenable: _service.activityLogsNotifier,
@@ -140,8 +142,9 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
   }
 
   Widget _buildSearchBar() {
+    final isDark = context.isDarkMode;
     return Container(
-      color: kSurfaceColor,
+      color: isDark ? kDarkSurfaceColor : kSurfaceColor,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Row(
         children: [
@@ -151,22 +154,22 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
               autofocus: true,
               decoration: InputDecoration(
                 hintText: 'Search logs (e.g. pump, moisture, alert)...',
-                hintStyle: const TextStyle(fontSize: 12, color: kTextSecondary),
+                hintStyle: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary),
                 prefixIcon: const Icon(Icons.search_rounded, size: 18, color: kPrimaryColor),
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 filled: true,
-                fillColor: kBackgroundColor,
+                fillColor: isDark ? kDarkCardColor : kBackgroundColor,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: kBorderSubtle),
+                  borderSide: BorderSide(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: kBorderSubtle),
+                  borderSide: BorderSide(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                 ),
               ),
-              style: const TextStyle(fontSize: 12, color: kTextPrimary),
+              style: TextStyle(fontSize: 12, color: isDark ? kDarkTextPrimary : kTextPrimary),
               onChanged: (val) {
                 setState(() {
                   _searchQuery = val.trim();
@@ -176,7 +179,7 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
           ),
           const SizedBox(width: 8),
           IconButton(
-            icon: const Icon(Icons.close_rounded, size: 20, color: kTextSecondary),
+            icon: Icon(Icons.close_rounded, size: 20, color: isDark ? kDarkTextSecondary : kTextSecondary),
             onPressed: () {
               setState(() {
                 _searchController.clear();
@@ -191,8 +194,9 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
   }
 
   Widget _buildDeviceFilterRow(List<Map<String, String>> devices) {
+    final isDark = context.isDarkMode;
     return Container(
-      color: kSurfaceColor,
+      color: isDark ? kDarkSurfaceColor : kSurfaceColor,
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -271,16 +275,18 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: _selectedDeviceId == null ? FontWeight.bold : FontWeight.w500,
-                        color: _selectedDeviceId == null ? Colors.white : kTextPrimary,
+                        color: _selectedDeviceId == null ? Colors.white : (isDark ? kDarkTextPrimary : kTextPrimary),
                       ),
                     ),
                     selected: _selectedDeviceId == null,
                     selectedColor: kPrimaryColor,
-                    backgroundColor: kBackgroundColor,
+                    backgroundColor: isDark ? kDarkCardColor : kBackgroundColor,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                       side: BorderSide(
-                        color: _selectedDeviceId == null ? kPrimaryColor : kBorderSubtle,
+                        color: _selectedDeviceId == null
+                            ? kPrimaryColor
+                            : (isDark ? kDarkBorderSubtle : kBorderSubtle),
                       ),
                     ),
                     showCheckmark: false,
@@ -309,16 +315,18 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                          color: isSelected ? Colors.white : kTextPrimary,
+                          color: isSelected ? Colors.white : (isDark ? kDarkTextPrimary : kTextPrimary),
                         ),
                       ),
                       selected: isSelected,
                       selectedColor: const Color(0xFF0284C7),
-                      backgroundColor: kBackgroundColor,
+                      backgroundColor: isDark ? kDarkCardColor : kBackgroundColor,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                         side: BorderSide(
-                          color: isSelected ? const Color(0xFF0284C7) : kBorderSubtle,
+                          color: isSelected
+                              ? const Color(0xFF0284C7)
+                              : (isDark ? kDarkBorderSubtle : kBorderSubtle),
                         ),
                       ),
                       showCheckmark: false,
@@ -341,6 +349,7 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
   }
 
   Widget _buildCategoryFilterChips() {
+    final isDark = context.isDarkMode;
     final filters = [
       {'label': 'All Events', 'type': null},
       {'label': '💧 Watering', 'type': IotLogType.watering},
@@ -351,7 +360,7 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
     ];
 
     return Container(
-      color: kSurfaceColor,
+      color: isDark ? kDarkSurfaceColor : kSurfaceColor,
       padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -366,16 +375,16 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                    color: isSelected ? Colors.white : kTextPrimary,
+                    color: isSelected ? Colors.white : (isDark ? kDarkTextPrimary : kTextPrimary),
                   ),
                 ),
                 selected: isSelected,
                 selectedColor: kPrimaryColor,
-                backgroundColor: kBackgroundColor,
+                backgroundColor: isDark ? kDarkCardColor : kBackgroundColor,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                   side: BorderSide(
-                    color: isSelected ? kPrimaryColor : kBorderSubtle,
+                    color: isSelected ? kPrimaryColor : (isDark ? kDarkBorderSubtle : kBorderSubtle),
                   ),
                 ),
                 showCheckmark: false,
@@ -451,6 +460,8 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
     final relative = _formatRelativeTime(log.timestamp);
     final isSelectedDevice = _selectedDeviceId == log.deviceId;
 
+    final isDark = context.isDarkMode;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -459,17 +470,17 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
         child: Container(
           padding: const EdgeInsets.all(13),
           decoration: BoxDecoration(
-            color: kSurfaceColor,
+            color: isDark ? kDarkCardColor : kSurfaceColor,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: isSelectedDevice
                   ? const Color(0xFF0284C7).withValues(alpha: 0.5)
-                  : kBorderSubtle,
+                  : (isDark ? kDarkBorderSubtle : kBorderSubtle),
               width: isSelectedDevice ? 1.5 : 1.0,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.02),
+                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -502,12 +513,12 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
                         decoration: BoxDecoration(
                           color: isSelectedDevice
                               ? const Color(0xFF0284C7).withValues(alpha: 0.15)
-                              : const Color(0xFFF1F5F9),
+                              : (isDark ? kDarkSurfaceColor : const Color(0xFFF1F5F9)),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
                             color: isSelectedDevice
                                 ? const Color(0xFF0284C7).withValues(alpha: 0.4)
-                                : const Color(0xFFCBD5E1),
+                                : (isDark ? kDarkBorderSubtle : const Color(0xFFCBD5E1)),
                           ),
                         ),
                         child: Row(
@@ -663,6 +674,7 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
   }
 
   void _showLogDetailModal(IotActivityLog log) {
+    final isDark = context.isDarkMode;
     final fullDate =
         '${log.timestamp.year}-${log.timestamp.month.toString().padLeft(2, '0')}-${log.timestamp.day.toString().padLeft(2, '0')} at ${_formatClock(log.timestamp)}';
     final isWatering = log.type == IotLogType.watering || log.durationSeconds != null;
@@ -673,9 +685,9 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-        decoration: const BoxDecoration(
-          color: kSurfaceColor,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: isDark ? kDarkSurfaceColor : kSurfaceColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: SafeArea(
           child: Column(
@@ -688,7 +700,7 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
+                    color: isDark ? kDarkBorderSubtle : Colors.grey.shade300,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -714,12 +726,16 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
                       children: [
                         Text(
                           log.title,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kTextPrimary),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: isDark ? kDarkTextPrimary : kTextPrimary,
+                          ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           '${log.categoryLabel} Event • $fullDate',
-                          style: const TextStyle(fontSize: 11, color: kTextSecondary),
+                          style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : kTextSecondary),
                         ),
                       ],
                     ),
@@ -728,30 +744,30 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
               ),
 
               const SizedBox(height: 16),
-              const Divider(height: 1),
+              Divider(height: 1, color: isDark ? kDarkBorderSubtle : null),
               const SizedBox(height: 16),
 
               // Section 1: IoT Device Specification
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: kBackgroundColor,
+                  color: isDark ? kDarkCardColor : kBackgroundColor,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: kBorderSubtle),
+                  border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
                       children: [
-                        Icon(Icons.developer_board_rounded, size: 16, color: kPrimaryColor),
-                        SizedBox(width: 6),
+                        const Icon(Icons.developer_board_rounded, size: 16, color: kPrimaryColor),
+                        const SizedBox(width: 6),
                         Text(
                           'IOT DEVICE SPECIFICATION',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
-                            color: kTextSecondary,
+                            color: isDark ? kDarkTextSecondary : kTextSecondary,
                             letterSpacing: 0.5,
                           ),
                         ),
@@ -761,11 +777,15 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Device Name: ', style: TextStyle(fontSize: 12, color: kTextSecondary)),
+                        Text('Device Name: ', style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary)),
                         Flexible(
                           child: Text(
                             log.deviceName,
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextPrimary),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? kDarkTextPrimary : kTextPrimary,
+                            ),
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.end,
                           ),
@@ -776,11 +796,15 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Hardware / Device ID: ', style: TextStyle(fontSize: 12, color: kTextSecondary)),
+                        Text('Hardware / Device ID: ', style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary)),
                         Flexible(
                           child: Text(
                             log.deviceId,
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextPrimary),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? kDarkTextPrimary : kTextPrimary,
+                            ),
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.end,
                           ),
@@ -791,7 +815,7 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Network Link: ', style: TextStyle(fontSize: 12, color: kTextSecondary)),
+                        Text('Network Link: ', style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary)),
                         Text(
                           _service.isRealHardwareConnected ? 'Online (LAN/Cloud)' : 'Local Wi-Fi',
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kStatusSuccess),
@@ -808,9 +832,9 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: kBackgroundColor,
+                  color: isDark ? kDarkCardColor : kBackgroundColor,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: kBorderSubtle),
+                  border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

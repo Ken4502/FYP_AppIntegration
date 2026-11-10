@@ -17,9 +17,14 @@ class StandardBackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final defaultBg = isDark ? kDarkCardColor : kBackgroundColor;
+    final defaultIcon = isDark ? kDarkTextPrimary : kTextPrimary;
+    final defaultBorder = isDark ? kDarkBorderSubtle : kBorderSubtle;
+
     return Center(
       child: Material(
-        color: backgroundColor ?? kBackgroundColor,
+        color: backgroundColor ?? defaultBg,
         shape: const CircleBorder(),
         child: InkWell(
           customBorder: const CircleBorder(),
@@ -29,12 +34,12 @@ class StandardBackButton extends StatelessWidget {
             height: 40,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: kBorderSubtle, width: 1.2),
+              border: Border.all(color: defaultBorder, width: 1.2),
             ),
             child: Icon(
               Icons.arrow_back_rounded,
               size: 22,
-              color: iconColor ?? kTextPrimary,
+              color: iconColor ?? defaultIcon,
             ),
           ),
         ),
@@ -80,8 +85,12 @@ class StandardAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final canPop = ModalRoute.of(context)?.canPop ?? false;
     final shouldShowBack = showBackButton && (canPop || onBack != null);
+    final titleColor = isDark ? kDarkTextPrimary : kTextPrimary;
+    final subtitleColor = isDark ? kDarkTextSecondary : kTextSecondary;
+    final defaultBg = isDark ? kDarkSurfaceColor : kSurfaceColor;
 
     Widget? effectiveLeading = leading;
     if (effectiveLeading == null && shouldShowBack) {
@@ -98,10 +107,10 @@ class StandardAppBar extends StatelessWidget implements PreferredSizeWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 19,
-                color: kTextPrimary,
+                color: titleColor,
                 letterSpacing: -0.3,
               ),
               overflow: TextOverflow.ellipsis,
@@ -110,9 +119,9 @@ class StandardAppBar extends StatelessWidget implements PreferredSizeWidget {
               const SizedBox(height: 2),
               Text(
                 subtitle!,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
-                  color: kTextSecondary,
+                  color: subtitleColor,
                   fontWeight: FontWeight.w500,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -130,7 +139,7 @@ class StandardAppBar extends StatelessWidget implements PreferredSizeWidget {
       title: effectiveTitle,
       actions: actions,
       bottom: bottom,
-      backgroundColor: backgroundColor ?? kSurfaceColor,
+      backgroundColor: backgroundColor ?? defaultBg,
       elevation: 0,
       scrolledUnderElevation: 0,
     );

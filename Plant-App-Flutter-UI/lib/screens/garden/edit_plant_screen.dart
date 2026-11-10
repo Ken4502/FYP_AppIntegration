@@ -54,8 +54,9 @@ class EditPlantScreenState extends State<EditPlantScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: AppBar(
         title: const Text("Edit Plant Profile"),
       ),
@@ -157,9 +158,9 @@ class EditPlantScreenState extends State<EditPlantScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                         decoration: BoxDecoration(
-                          color: kBackgroundColor,
+                          color: isDark ? kDarkSurfaceColor : kBackgroundColor,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: kBorderSubtle),
+                          border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -171,7 +172,7 @@ class EditPlantScreenState extends State<EditPlantScreen> {
                                   const SizedBox(width: 10),
                                   Text(
                                     _reminderTime,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kTextPrimary),
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? kDarkTextPrimary : kTextPrimary),
                                   ),
                                 ],
                               ),

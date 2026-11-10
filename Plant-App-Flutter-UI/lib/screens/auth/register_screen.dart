@@ -90,8 +90,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: AppBar(
         title: const Text('Create Account'),
       ),
@@ -148,12 +149,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   Container(
                     padding: const EdgeInsets.all(22),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: isDark ? kDarkCardColor : Colors.white,
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: kBorderSubtle),
+                      border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
+                          color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
                           blurRadius: 16,
                           offset: const Offset(0, 4),
                         ),
@@ -162,14 +163,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Join UrbanGreen',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: kTextPrimary),
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: isDark ? kDarkTextPrimary : kTextPrimary),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           'Start monitoring your smart urban plants & pathology telemetry',
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : Colors.grey.shade600),
                         ),
                         const SizedBox(height: 22),
 
@@ -311,7 +312,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('Already have an account?', style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
+                      Text('Already have an account?', style: TextStyle(color: isDark ? kDarkTextSecondary : Colors.grey.shade700, fontSize: 13)),
                       TextButton(
                         onPressed: () => Navigator.pop(context),
                         child: const Text('Sign In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),

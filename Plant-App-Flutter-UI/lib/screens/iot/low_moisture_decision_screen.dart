@@ -163,11 +163,12 @@ class _LowMoistureDecisionScreenState extends State<LowMoistureDecisionScreen> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (sheetContext) {
+        final isDark = context.isDarkMode;
         return Container(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-          decoration: const BoxDecoration(
-            color: kSurfaceColor,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          decoration: BoxDecoration(
+            color: isDark ? kDarkSurfaceColor : kSurfaceColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -286,16 +287,22 @@ class _LowMoistureDecisionScreenState extends State<LowMoistureDecisionScreen> {
     required VoidCallback onTap,
     bool isDangerous = false,
   }) {
+    final isDark = context.isDarkMode;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: isDangerous ? Colors.red.shade50.withValues(alpha: 0.4) : kBackgroundColor,
+          color: isDangerous
+              ? (isDark ? const Color(0xFF3B1E1E) : Colors.red.shade50.withValues(alpha: 0.4))
+              : (isDark ? kDarkCardColor : kBackgroundColor),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isDangerous ? Colors.red.shade200 : kBorderSubtle,
+            color: isDangerous
+                ? (isDark ? const Color(0xFF6B2B2B) : Colors.red.shade200)
+                : (isDark ? kDarkBorderSubtle : kBorderSubtle),
           ),
         ),
         child: Row(
@@ -371,13 +378,15 @@ class _LowMoistureDecisionScreenState extends State<LowMoistureDecisionScreen> {
   Widget build(BuildContext context) {
     final statusColor = _moistureStatusColor;
     final moisturePct = _currentMoisturePct;
+    final isDark = context.isDarkMode;
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: AppBar(
         title: const Text('Plant Hydration Decision', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
         elevation: 0,
-        backgroundColor: kSurfaceColor,
+        backgroundColor: isDark ? kDarkSurfaceColor : kSurfaceColor,
+        foregroundColor: isDark ? kDarkTextPrimary : kTextPrimary,
         leading: IconButton(
           icon: const Icon(Icons.close_rounded),
           onPressed: () => Navigator.pop(context),
@@ -666,12 +675,13 @@ class _LowMoistureDecisionScreenState extends State<LowMoistureDecisionScreen> {
   }
 
   Widget _buildCareDetail(IconData icon, String label, String value, Color color) {
+    final isDark = context.isDarkMode;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: kBackgroundColor,
+        color: isDark ? kDarkCardColor : kBackgroundColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
       ),
       child: Row(
         children: [

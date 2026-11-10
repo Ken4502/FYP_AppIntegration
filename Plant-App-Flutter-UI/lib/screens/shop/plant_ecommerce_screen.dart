@@ -6,6 +6,9 @@ import 'package:urbangreen/models/cart_item_model.dart';
 import 'package:urbangreen/models/cart_model.dart';
 import 'package:urbangreen/models/product_model.dart';
 import 'package:urbangreen/screens/shop/cart_screen.dart';
+import 'package:urbangreen/services/achievement_service.dart';
+import 'package:urbangreen/services/plant_service.dart';
+import 'package:urbangreen/services/recommendation_service.dart';
 
 class PlantEcommerceScreen extends StatefulWidget {
   const PlantEcommerceScreen({super.key});
@@ -17,6 +20,7 @@ class PlantEcommerceScreen extends StatefulWidget {
 class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _onlyInStock = false;
 
   @override
   void dispose() {
@@ -61,6 +65,16 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
       description: 'Fast-growing trailing vine tolerant of low-light spaces.',
       stock: 20,
     ),
+    Product(
+      id: 'p_soldout',
+      name: 'Variegated Monstera Albo',
+      price: 188.00,
+      imageUrl: 'assets/images/image_1.png',
+      type: 'Plant',
+      description: 'Rare highly sought-after variegated specimen with pure white fenestrated leaves.',
+      stock: 0,
+      categories: ['Rare Specimen'],
+    ),
   ];
 
   final List<Product> _fallbackEquipment = [
@@ -91,6 +105,15 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
       description: 'Drainage-enabled glazed ceramic pot with saucer.',
       stock: 18,
     ),
+    Product(
+      id: 'e_soldout',
+      name: 'Solid Copper Misting Wand',
+      price: 79.00,
+      imageUrl: 'assets/images/img.png',
+      type: 'Tool',
+      description: 'Handcrafted solid copper extension watering wand with ultra-fine misting nozzle.',
+      stock: 0,
+    ),
   ];
 
   final List<Product> _fallbackFertilizer = [
@@ -111,6 +134,15 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
       type: 'Pest Control',
       description: 'Ready-to-use botanical insecticide & fungicide for spider mites & scale.',
       stock: 16,
+    ),
+    Product(
+      id: 'f_soldout',
+      name: 'Osmocote Slow-Release Prills',
+      price: 24.00,
+      imageUrl: 'assets/images/image_2.png',
+      type: 'Fertilizer',
+      description: 'Controlled 6-month nutrient release polymer-coated granules.',
+      stock: 0,
     ),
   ];
 
@@ -135,26 +167,57 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
       description: 'Indoor plant grow light with automated timer controller.',
       stock: 5,
     ),
+    Product(
+      id: 'i_soldout',
+      name: 'Smart LoRaWAN Sub-GHz Hub',
+      price: 139.00,
+      imageUrl: 'assets/images/image_3.png',
+      type: 'Accessories',
+      categories: ['Monitoring', 'Gateway'],
+      description: 'Long-range low-power gateway connecting up to 64 soil sensors across mesh.',
+      stock: 0,
+    ),
   ];
 
-  List<Product> _filterByQuery(List<Product> products) {
-    if (_searchQuery.isEmpty) return products;
-    final query = _searchQuery.toLowerCase();
-    return products.where((p) {
-      final name = p.name.toLowerCase();
-      final type = p.type.toLowerCase();
-      final desc = p.description.toLowerCase();
-      final cats = p.categories.map((c) => c.toLowerCase()).join(' ');
-      return name.contains(query) || type.contains(query) || desc.contains(query) || cats.contains(query);
-    }).toList();
+  List<Product> _filterAndSort(List<Product> products) {
+    var list = products;
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      list = list.where((p) {
+        final name = p.name.toLowerCase();
+        final type = p.type.toLowerCase();
+        final desc = p.description.toLowerCase();
+        final cats = p.categories.map((c) => c.toLowerCase()).join(' ');
+        return name.contains(query) ||
+            type.contains(query) ||
+            desc.contains(query) ||
+            cats.contains(query);
+      }).toList();
+    }
+
+    if (_onlyInStock) {
+      return list.where((p) => p.isAvailable).toList();
+    }
+
+    // Strictly order available products first, and sold out products at the bottom
+    final available = list.where((p) => p.isAvailable).toList();
+    final soldOut = list.where((p) => p.isSoldOut).toList();
+    return [...available, ...soldOut];
   }
 
   @override
   Widget build(BuildContext context) {
     final cart = Provider.of<CartModel>(context);
 
+    Stream<QuerySnapshot>? firestoreStream;
+    try {
+      firestoreStream = FirebaseFirestore.instance.collection('plant_supplies').snapshots();
+    } catch (_) {
+      firestoreStream = null;
+    }
+
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('plant_supplies').snapshots(),
+      stream: firestoreStream,
       builder: (context, snapshot) {
         List<Product> allProducts = [];
         List<Product> plantsList = _fallbackPlants;
@@ -177,29 +240,51 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
           if (liveEquipment.isNotEmpty) equipmentList = liveEquipment;
           if (liveFertilizer.isNotEmpty) fertilizerList = liveFertilizer;
           if (liveIot.isNotEmpty) iotList = liveIot;
+        } else {
+          allProducts = [
+            ..._fallbackPlants,
+            ..._fallbackEquipment,
+            ..._fallbackFertilizer,
+            ..._fallbackIot,
+          ];
         }
 
-        final filteredPlants = _filterByQuery(plantsList);
-        final filteredEquipment = _filterByQuery(equipmentList);
-        final filteredFertilizer = _filterByQuery(fertilizerList);
-        final filteredIot = _filterByQuery(iotList);
+        // Calculate AI Recommendations based on Sanctuary, Cart, and Browsing
+        final recommendations = RecommendationService().getRecommendations(
+          allProducts: allProducts,
+          userPlants: PlantService().myPlants,
+          cartItems: cart.items,
+          onlyAvailable: _onlyInStock,
+        );
+
+        final Map<String, RecommendedProduct> recMap = {
+          for (final r in recommendations) r.product.id: r,
+        };
+
+        final recommendedProducts = _filterAndSort(recommendations.map((r) => r.product).toList());
+        final filteredPlants = _filterAndSort(plantsList);
+        final filteredEquipment = _filterAndSort(equipmentList);
+        final filteredFertilizer = _filterAndSort(fertilizerList);
+        final filteredIot = _filterAndSort(iotList);
+
+        final isDark = Theme.of(context).brightness == Brightness.dark;
 
         return DefaultTabController(
-          length: 4,
+          length: 5,
           child: Scaffold(
-            backgroundColor: kBackgroundColor,
+            backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
             body: SafeArea(
               bottom: false,
               child: Column(
                 children: [
                   // Standardized Botanical Header (Uniform with Garden & Sensors)
                   Container(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          kAccentMint.withValues(alpha: 0.55),
-                          kBackgroundColor,
+                          isDark ? kDarkSurfaceColor : kAccentMint.withValues(alpha: 0.55),
+                          isDark ? kDarkBackgroundColor : kBackgroundColor,
                         ],
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
@@ -219,16 +304,16 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
-                                    color: Colors.grey.shade700,
+                                    color: isDark ? kDarkTextSecondary : Colors.grey.shade700,
                                   ),
                                 ),
                                 const SizedBox(height: 2),
-                                const Text(
+                                Text(
                                   'UrbanGreen Store',
                                   style: TextStyle(
                                     fontSize: 24,
                                     fontWeight: FontWeight.w800,
-                                    color: kTextPrimary,
+                                    color: isDark ? kDarkTextPrimary : kTextPrimary,
                                     letterSpacing: -0.5,
                                   ),
                                 ),
@@ -242,19 +327,26 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                                   width: 44,
                                   height: 44,
                                   decoration: BoxDecoration(
-                                    color: kSurfaceColor,
+                                    color: isDark ? kDarkSurfaceColor : kSurfaceColor,
                                     shape: BoxShape.circle,
-                                    border: Border.all(color: kBorderSubtle, width: 1.2),
+                                    border: Border.all(
+                                      color: isDark ? kDarkBorderSubtle : kBorderSubtle,
+                                      width: 1.2,
+                                    ),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.04),
+                                        color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
                                         blurRadius: 6,
                                         offset: const Offset(0, 2),
                                       ),
                                     ],
                                   ),
                                   child: IconButton(
-                                    icon: const Icon(Icons.shopping_cart_outlined, color: kTextPrimary, size: 21),
+                                    icon: Icon(
+                                      Icons.shopping_cart_outlined,
+                                      color: isDark ? kDarkTextPrimary : kTextPrimary,
+                                      size: 21,
+                                    ),
                                     tooltip: 'View Cart',
                                     onPressed: () {
                                       Navigator.push(
@@ -290,18 +382,18 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 12),
 
                         // Search Bar
                         Container(
                           height: 42,
                           decoration: BoxDecoration(
-                            color: kSurfaceColor,
+                            color: isDark ? kDarkSurfaceColor : kSurfaceColor,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: kBorderSubtle),
+                            border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.02),
+                                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
                                 blurRadius: 4,
                                 offset: const Offset(0, 2),
                               ),
@@ -316,11 +408,11 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                             },
                             decoration: InputDecoration(
                               hintText: 'Search plants, fertilizers, tools...',
-                              hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                              prefixIcon: const Icon(Icons.search_rounded, size: 20, color: kPrimaryColor),
+                              hintStyle: TextStyle(fontSize: 13, color: isDark ? kDarkTextSecondary : Colors.grey.shade600),
+                              prefixIcon: Icon(Icons.search_rounded, size: 20, color: isDark ? kSecondaryColor : kPrimaryColor),
                               suffixIcon: _searchQuery.isNotEmpty
                                   ? IconButton(
-                                      icon: const Icon(Icons.clear_rounded, size: 18, color: kTextSecondary),
+                                      icon: Icon(Icons.clear_rounded, size: 18, color: isDark ? kDarkTextSecondary : kTextSecondary),
                                       onPressed: () {
                                         _searchController.clear();
                                         setState(() {
@@ -332,8 +424,76 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                               border: InputBorder.none,
                               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                             ),
-                            style: const TextStyle(fontSize: 13, color: kTextPrimary),
+                            style: TextStyle(fontSize: 13, color: isDark ? kDarkTextPrimary : kTextPrimary),
                           ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Filter & Stock Control Bar
+                        Row(
+                          children: [
+                            InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _onlyInStock = !_onlyInStock;
+                                });
+                              },
+                              borderRadius: BorderRadius.circular(20),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _onlyInStock ? kPrimaryColor : (isDark ? kDarkSurfaceColor : kSurfaceColor),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: _onlyInStock ? kPrimaryColor : (isDark ? kDarkBorderSubtle : kBorderSubtle),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _onlyInStock ? Icons.check_circle : Icons.tune_rounded,
+                                      size: 13,
+                                      color: _onlyInStock ? Colors.white : (isDark ? kDarkTextSecondary : kTextSecondary),
+                                    ),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      _onlyInStock ? 'In-Stock Only' : 'Available First (Sold Out at Bottom)',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: _onlyInStock ? Colors.white : (isDark ? kDarkTextPrimary : kTextPrimary),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: (isDark ? kSecondaryColor : kPrimaryColor).withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.auto_awesome, size: 11, color: isDark ? kSecondaryColor : kPrimaryColor),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'AI Ranked',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark ? kSecondaryColor : kPrimaryColor.withValues(alpha: 0.9),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 10),
 
@@ -342,12 +502,12 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                           height: 42,
                           padding: const EdgeInsets.all(3),
                           decoration: BoxDecoration(
-                            color: kSurfaceColor,
+                            color: isDark ? kDarkSurfaceColor : kSurfaceColor,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: kBorderSubtle),
+                            border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.02),
+                                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
                                 blurRadius: 4,
                                 offset: const Offset(0, 1),
                               ),
@@ -371,9 +531,19 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                               ],
                             ),
                             labelColor: Colors.white,
-                            unselectedLabelColor: kTextSecondary,
+                            unselectedLabelColor: isDark ? kDarkTextSecondary : kTextSecondary,
                             labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                             tabs: [
+                              Tab(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.auto_awesome, size: 13),
+                                    const SizedBox(width: 5),
+                                    Text('Recommended (${recommendedProducts.length})'),
+                                  ],
+                                ),
+                              ),
                               Tab(text: 'Plants (${filteredPlants.length})'),
                               Tab(text: 'Tools (${filteredEquipment.length})'),
                               Tab(text: 'Care (${filteredFertilizer.length})'),
@@ -389,10 +559,11 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                   Expanded(
                     child: TabBarView(
                       children: [
-                        _buildProductTab(context, filteredPlants, 0),
-                        _buildProductTab(context, filteredEquipment, 1),
-                        _buildProductTab(context, filteredFertilizer, 2),
-                        _buildProductTab(context, filteredIot, 3),
+                        _buildProductTab(context, recommendedProducts, 0, recMap: recMap),
+                        _buildProductTab(context, filteredPlants, 1, recMap: recMap),
+                        _buildProductTab(context, filteredEquipment, 2, recMap: recMap),
+                        _buildProductTab(context, filteredFertilizer, 3, recMap: recMap),
+                        _buildProductTab(context, filteredIot, 4, recMap: recMap),
                       ],
                     ),
                   ),
@@ -405,11 +576,18 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
     );
   }
 
-  Widget _buildProductTab(BuildContext context, List<Product> products, int tabIndex) {
+  Widget _buildProductTab(
+    BuildContext context,
+    List<Product> products,
+    int tabIndex, {
+    Map<String, RecommendedProduct>? recMap,
+  }) {
     return Column(
       children: [
         _buildPromoBanner(context, tabIndex),
-        Expanded(child: _buildProductGrid(context, products)),
+        Expanded(
+          child: _buildProductGrid(context, products, recMap: recMap),
+        ),
       ],
     );
   }
@@ -422,18 +600,24 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
 
     switch (tabIndex) {
       case 0:
+        title = 'AI Botanical Recommendations';
+        subtitle = 'Personalized for your garden sanctuary, telemetry sensors & shopping habits';
+        icon = Icons.auto_awesome;
+        color = const Color(0xFF1B5E20);
+        break;
+      case 1:
         title = 'Specimen Houseplants';
         subtitle = 'Living botanicals with root integrity and acclimatization guarantee';
         icon = Icons.spa_outlined;
         color = kPrimaryColor;
         break;
-      case 1:
+      case 2:
         title = 'Precision Hardware & Pottery';
         subtitle = 'Japanese SK-5 bypass shears, long-spout cans & glazed ceramic planters';
         icon = Icons.handyman_outlined;
         color = Colors.teal.shade700;
         break;
-      case 2:
+      case 3:
         title = 'Organic Feeds & Biocontrols';
         subtitle = 'Targeted neem oil sprays, seaweed tonics & mineral fertilizers';
         icon = Icons.science_outlined;
@@ -473,7 +657,7 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                 ),
                 Text(
                   subtitle,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade700, height: 1.2),
+                  style: TextStyle(fontSize: 11, color: Theme.of(context).brightness == Brightness.dark ? kDarkTextSecondary : Colors.grey.shade700, height: 1.2),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -485,10 +669,11 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
     );
   }
 
-  Widget _buildProductGrid(BuildContext context, List<Product> products) {
-    final theme = Theme.of(context);
-    final cart = Provider.of<CartModel>(context, listen: false);
-
+  Widget _buildProductGrid(
+    BuildContext context,
+    List<Product> products, {
+    Map<String, RecommendedProduct>? recMap,
+  }) {
     if (products.isEmpty) {
       return Center(
         child: Column(
@@ -499,7 +684,9 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
             Text(
               _searchQuery.isNotEmpty
                   ? 'No supplies matching "$_searchQuery"'
-                  : 'No items currently in this section',
+                  : (_onlyInStock
+                      ? 'No in-stock items currently available'
+                      : 'No items currently in this section'),
               style: TextStyle(fontSize: 15, color: Colors.grey.shade600),
             ),
           ],
@@ -507,217 +694,370 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
       );
     }
 
-    return GridView.builder(
-      padding: const EdgeInsets.all(kDefaultPadding),
-      itemCount: products.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: kDefaultPadding,
-        mainAxisSpacing: kDefaultPadding,
-        childAspectRatio: 0.70,
-      ),
-      itemBuilder: (context, index) {
-        final product = products[index];
-        final isNetwork = product.imageUrl.startsWith('http');
-        final isOutOfStock = product.stock <= 0;
-        final isLowStock = product.stock > 0 && product.stock <= 5;
+    final available = products.where((p) => p.isAvailable).toList();
+    final soldOut = products.where((p) => p.isSoldOut).toList();
 
-        return InkWell(
-          onTap: () => _showProductDetailsModal(context, product),
-          borderRadius: BorderRadius.circular(14),
-          child: Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Stack(
-                    children: [
-                      SizedBox(
-                        width: double.infinity,
-                        height: double.infinity,
-                        child: isNetwork
-                            ? Image.network(
-                                product.imageUrl,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
-                                  color: Colors.grey.shade200,
-                                  child: Icon(Icons.spa, color: Colors.grey.shade400, size: 36),
-                                ),
-                              )
-                            : Image.asset(
-                                product.imageUrl,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
-                                  color: Colors.grey.shade200,
-                                  child: Icon(Icons.spa, color: Colors.grey.shade400, size: 36),
-                                ),
-                              ),
-                      ),
-                      if (isOutOfStock)
-                        Container(
-                          color: Colors.black.withValues(alpha: 0.55),
-                          alignment: Alignment.center,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.redAccent,
-                              borderRadius: BorderRadius.circular(6),
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        // 1. Available Products Section
+        if (available.isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.all(kDefaultPadding),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: kDefaultPadding,
+                mainAxisSpacing: kDefaultPadding,
+                childAspectRatio: 0.69,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final product = available[index];
+                  return _buildProductCard(
+                    context,
+                    product,
+                    rec: recMap?[product.id],
+                  );
+                },
+                childCount: available.length,
+              ),
+            ),
+          ),
+
+        // 2. Sold Out Section (Only shown when _onlyInStock is false and sold-out items exist)
+        if (soldOut.isNotEmpty && !_onlyInStock) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.remove_shopping_cart, size: 13, color: Colors.red.shade700),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Sold Out (${soldOut.length})',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red.shade800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Divider(color: Colors.grey.shade300, thickness: 1),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Restocking soon',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(kDefaultPadding, 6, kDefaultPadding, 24),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: kDefaultPadding,
+                mainAxisSpacing: kDefaultPadding,
+                childAspectRatio: 0.69,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final product = soldOut[index];
+                  return _buildProductCard(
+                    context,
+                    product,
+                    rec: recMap?[product.id],
+                  );
+                },
+                childCount: soldOut.length,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildProductCard(
+    BuildContext context,
+    Product product, {
+    RecommendedProduct? rec,
+  }) {
+    final theme = Theme.of(context);
+    final cart = Provider.of<CartModel>(context, listen: false);
+    final isNetwork = product.imageUrl.startsWith('http');
+    final isOutOfStock = product.isSoldOut;
+    final isLowStock = product.stock > 0 && product.stock <= 5;
+
+    return InkWell(
+      onTap: () {
+        // Record user interaction for smart recommendations
+        RecommendationService().recordInteraction(
+          type: product.type,
+          categories: product.categories,
+          speciesName: product.name,
+          action: 'view',
+        );
+        _showProductDetailsModal(context, product, rec: rec);
+      },
+      borderRadius: BorderRadius.circular(14),
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    height: double.infinity,
+                    child: isNetwork
+                        ? Image.network(
+                            product.imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: Colors.grey.shade200,
+                              child: Icon(Icons.spa, color: Colors.grey.shade400, size: 36),
                             ),
-                            child: const Text(
-                              'OUT OF STOCK',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
+                          )
+                        : Image.asset(
+                            product.imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: Colors.grey.shade200,
+                              child: Icon(Icons.spa, color: Colors.grey.shade400, size: 36),
                             ),
                           ),
-                        )
-                      else if (isLowStock)
-                        Positioned(
-                          top: 8,
-                          left: 8,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.shade800,
-                              borderRadius: BorderRadius.circular(6),
+                  ),
+                  if (rec != null)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1B5E20),
+                          borderRadius: BorderRadius.circular(6),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.15),
+                              blurRadius: 3,
+                              offset: const Offset(0, 1),
                             ),
-                            child: Text(
-                              'Only ${product.stock} left',
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.auto_awesome, size: 9, color: Color(0xFFA5D6A7)),
+                            const SizedBox(width: 4),
+                            Text(
+                              rec.badge,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 9,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (isOutOfStock)
+                    Container(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      alignment: Alignment.center,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          'OUT OF STOCK',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                    ],
+                      ),
+                    )
+                  else if (isLowStock && rec == null)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade800,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Only ${product.stock} left',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(10.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    product.name,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(10.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 3),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        product.name,
-                        style: theme.textTheme.titleSmall?.copyWith(
+                        'RM ${product.price.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: theme.colorScheme.primary,
                           fontWeight: FontWeight.bold,
+                          fontSize: 14,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 3),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'RM ${product.price.toStringAsFixed(2)}',
-                            style: TextStyle(
-                              color: theme.colorScheme.primary,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
+                      if (product.categories.isNotEmpty)
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: (Theme.of(context).brightness == Brightness.dark)
+                                  ? const Color(0xFF1B3828)
+                                  : const Color(0xFFE8F5E9),
+                              borderRadius: BorderRadius.circular(6),
                             ),
-                          ),
-                          if (product.categories.isNotEmpty)
-                            Flexible(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE8F5E9),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  product.categories.first,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 9,
-                                    color: Color(0xFF2E7D32),
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
+                            child: Text(
+                              product.categories.first,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: (Theme.of(context).brightness == Brightness.dark)
+                                    ? const Color(0xFF81C784)
+                                    : const Color(0xFF2E7D32),
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 34,
-                        child: ElevatedButton.icon(
-                          onPressed: isOutOfStock
-                              ? null
-                              : () {
-                                  final cartItem = CartItem(
-                                    productId: product.id,
-                                    name: product.name,
-                                    price: product.price,
-                                    imageUrl: product.imageUrl,
-                                  );
-                                  cart.addItem(cartItem);
-                                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('${product.name} added to cart'),
-                                      duration: const Duration(seconds: 4),
-                                      action: SnackBarAction(
-                                        label: 'VIEW CART',
-                                        onPressed: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) => const CartScreen(),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  );
-                                },
-                          icon: Icon(
-                            isOutOfStock ? Icons.block : Icons.add_shopping_cart,
-                            size: 14,
-                            color: isOutOfStock ? Colors.grey.shade600 : Colors.white,
-                          ),
-                          label: Text(
-                            isOutOfStock ? 'Sold Out' : 'Add to Cart',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: isOutOfStock ? Colors.grey.shade600 : Colors.white,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isOutOfStock ? Colors.grey.shade200 : kPrimaryColor,
-                            foregroundColor: Colors.white,
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 34,
+                    child: ElevatedButton.icon(
+                      onPressed: isOutOfStock
+                          ? null
+                          : () {
+                              final cartItem = CartItem(
+                                productId: product.id,
+                                name: product.name,
+                                price: product.price,
+                                imageUrl: product.imageUrl,
+                              );
+                              cart.addItem(cartItem);
+                              AchievementService().recordStoreAction();
+                              RecommendationService().recordInteraction(
+                                type: product.type,
+                                categories: product.categories,
+                                speciesName: product.name,
+                                action: 'add_to_cart',
+                              );
+                              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('${product.name} added to cart'),
+                                  duration: const Duration(seconds: 4),
+                                  action: SnackBarAction(
+                                    label: 'VIEW CART',
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => const CartScreen(),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                      icon: Icon(
+                        isOutOfStock ? Icons.block : Icons.add_shopping_cart,
+                        size: 14,
+                        color: isOutOfStock ? Colors.grey.shade600 : Colors.white,
+                      ),
+                      label: Text(
+                        isOutOfStock ? 'Sold Out' : 'Add to Cart',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: isOutOfStock ? Colors.grey.shade600 : Colors.white,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isOutOfStock ? Colors.grey.shade200 : kPrimaryColor,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.zero,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 
-  void _showProductDetailsModal(BuildContext context, Product product) {
+  void _showProductDetailsModal(
+    BuildContext context,
+    Product product, {
+    RecommendedProduct? rec,
+  }) {
     final theme = Theme.of(context);
     final cart = Provider.of<CartModel>(context, listen: false);
     final isNetwork = product.imageUrl.startsWith('http');
-    final isOutOfStock = product.stock <= 0;
+    final isOutOfStock = product.isSoldOut;
 
     showModalBottomSheet(
       context: context,
@@ -755,6 +1095,48 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                if (rec != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: (Theme.of(ctx).brightness == Brightness.dark) ? const Color(0xFF1B3828) : const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: (Theme.of(ctx).brightness == Brightness.dark) ? const Color(0xFF2E7D32) : const Color(0xFFA5D6A7)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.auto_awesome, size: 16, color: (Theme.of(ctx).brightness == Brightness.dark) ? const Color(0xFFA5D6A7) : const Color(0xFF2E7D32)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'RECOMMENDED FOR YOU • ${rec.badge.toUpperCase()}',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: (Theme.of(ctx).brightness == Brightness.dark) ? const Color(0xFFA5D6A7) : const Color(0xFF2E7D32),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                rec.reason,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: (Theme.of(ctx).brightness == Brightness.dark) ? const Color(0xFFE8F5E9) : const Color(0xFF1B5E20),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -839,6 +1221,13 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                                 price: product.price,
                                 imageUrl: product.imageUrl,
                               ),
+                            );
+                            AchievementService().recordStoreAction();
+                            RecommendationService().recordInteraction(
+                              type: product.type,
+                              categories: product.categories,
+                              speciesName: product.name,
+                              action: 'add_to_cart',
                             );
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(

@@ -195,8 +195,10 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
             : (linkedDevice.moistureLevel! * 100).toInt())
         : 0;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       body: CustomScrollView(
         slivers: [
           // Cinematic App Bar Image Header
@@ -427,7 +429,7 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: kSurfaceColor,
+                        color: isDark ? kDarkCardColor : kSurfaceColor,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
                         boxShadow: [
@@ -564,12 +566,12 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: kSurfaceColor,
+                        color: isDark ? kDarkCardColor : kSurfaceColor,
                         borderRadius: BorderRadius.circular(18),
                         border: Border.all(color: _plant.wateringStatusColor.withValues(alpha: 0.35)),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.03),
+                            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
                             blurRadius: 8,
                             offset: const Offset(0, 3),
                           ),
@@ -781,9 +783,9 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: kSurfaceColor,
+                      color: isDark ? kDarkCardColor : kSurfaceColor,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: kBorderSubtle),
+                      border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -795,7 +797,7 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
                             Expanded(
                               child: Text(
                                 '${_plant.species} Care Notes',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kTextPrimary),
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? kDarkTextPrimary : kTextPrimary),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -805,13 +807,13 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
                         const SizedBox(height: 8),
                         Text(
                           _plant.wateringRecommendation,
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.4),
+                          style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : Colors.grey.shade700, height: 1.4),
                         ),
                         if (_plant.description.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           Text(
                             _plant.description,
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600, height: 1.4),
+                            style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : Colors.grey.shade600, height: 1.4),
                           ),
                         ],
                       ],
@@ -823,16 +825,16 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: kSurfaceColor,
+                      color: isDark ? kDarkCardColor : kSurfaceColor,
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: kBorderSubtle),
+                      border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Care Record',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: kTextPrimary),
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: isDark ? kDarkTextPrimary : kTextPrimary),
                         ),
                         const SizedBox(height: 10),
                         Row(
@@ -844,7 +846,7 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
                                 _plant.lastWatered != null
                                     ? 'Last Watered: ${_formatRelativeDate(_plant.lastWatered!)} (${_plant.lastWatered!.toLocal().toString().split(" ")[0]})'
                                     : 'Not yet recorded. Tap "Watered Today" to begin log.',
-                                style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                                style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : Colors.grey.shade700),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -869,12 +871,13 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
     required String value,
     required Color color,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
       ),
       child: Row(
         children: [
@@ -945,9 +948,9 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
                 top: 16,
                 bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 24,
               ),
-              decoration: const BoxDecoration(
-                color: kSurfaceColor,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              decoration: BoxDecoration(
+                color: Theme.of(sheetContext).brightness == Brightness.dark ? kDarkSurfaceColor : kSurfaceColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: SingleChildScrollView(
                 child: Column(
@@ -1146,21 +1149,22 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
   }
 
   Widget _buildIntervalChoiceChip(String label, int value, int current, Function(int) onSelected) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isSelected = value == current;
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
       onSelected: (_) => onSelected(value),
       selectedColor: kPrimaryColor,
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkSurfaceColor : kBackgroundColor,
       labelStyle: TextStyle(
-        color: isSelected ? Colors.white : kTextPrimary,
+        color: isSelected ? Colors.white : (isDark ? kDarkTextPrimary : kTextPrimary),
         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
         fontSize: 12,
       ),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: isSelected ? kPrimaryColor : kBorderSubtle),
+        side: BorderSide(color: isSelected ? kPrimaryColor : (isDark ? kDarkBorderSubtle : kBorderSubtle)),
       ),
     );
   }
@@ -1174,9 +1178,9 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-        decoration: const BoxDecoration(
-          color: kSurfaceColor,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: Theme.of(ctx).brightness == Brightness.dark ? kDarkSurfaceColor : kSurfaceColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1266,9 +1270,9 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
           constraints: BoxConstraints(
             maxHeight: MediaQuery.of(sheetContext).size.height * 0.75,
           ),
-          decoration: const BoxDecoration(
-            color: kSurfaceColor,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          decoration: BoxDecoration(
+            color: Theme.of(sheetContext).brightness == Brightness.dark ? kDarkSurfaceColor : kSurfaceColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,

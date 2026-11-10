@@ -1174,10 +1174,10 @@ class _IotAdvancedManagementScreenState extends State<IotAdvancedManagementScree
     final profile = _config.speciesProfile;
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.scaffoldBg,
       appBar: AppBar(
         title: Text(_config.deviceName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-        backgroundColor: kSurfaceColor,
+        backgroundColor: context.surfaceBg,
         elevation: 0,
         scrolledUnderElevation: 0,
         actions: [
@@ -1266,7 +1266,7 @@ class _IotAdvancedManagementScreenState extends State<IotAdvancedManagementScree
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: context.cardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: badgeColor.withValues(alpha: 0.3), width: 1.5),
         boxShadow: [
@@ -1334,9 +1334,9 @@ class _IotAdvancedManagementScreenState extends State<IotAdvancedManagementScree
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: context.cardBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: context.borderSubtleColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1404,9 +1404,9 @@ class _IotAdvancedManagementScreenState extends State<IotAdvancedManagementScree
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: context.cardBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kBorderSubtle),
+        border: Border.all(color: context.borderSubtleColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1452,9 +1452,9 @@ class _IotAdvancedManagementScreenState extends State<IotAdvancedManagementScree
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: kBackgroundColor,
+              color: context.surfaceBg,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: kBorderSubtle),
+              border: Border.all(color: context.borderSubtleColor),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1542,7 +1542,7 @@ class _IotAdvancedManagementScreenState extends State<IotAdvancedManagementScree
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: context.cardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isCriticallyDry ? Colors.red.shade200 : kBorderSubtle,
@@ -1764,7 +1764,7 @@ class _IotAdvancedManagementScreenState extends State<IotAdvancedManagementScree
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: context.cardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: _isBleScanning ? kPrimaryColor.withValues(alpha: 0.5) : kBorderSubtle,
@@ -2143,7 +2143,7 @@ class _IotAdvancedManagementScreenState extends State<IotAdvancedManagementScree
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kSurfaceColor,
+        color: context.cardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.red.shade100),
       ),
@@ -2226,9 +2226,9 @@ class _WifiPickerBottomSheetState extends State<_WifiPickerBottomSheet> {
   Widget build(BuildContext context) {
     return Container(
       height: MediaQuery.of(context).size.height * 0.65,
-      decoration: const BoxDecoration(
-        color: kSurfaceColor,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: context.cardBg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         children: [
@@ -2400,9 +2400,9 @@ class _IotDevicePickerBottomSheetState extends State<_IotDevicePickerBottomSheet
   Widget build(BuildContext context) {
     return Container(
       height: MediaQuery.of(context).size.height * 0.72,
-      decoration: const BoxDecoration(
-        color: kSurfaceColor,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: context.cardBg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         children: [

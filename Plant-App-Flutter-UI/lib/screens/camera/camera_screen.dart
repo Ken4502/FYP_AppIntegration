@@ -70,10 +70,11 @@ class _CameraScreenState extends State<CameraScreen> {
     String? testResult;
     bool? isOnline;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? kDarkCardColor : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -216,7 +217,7 @@ class _CameraScreenState extends State<CameraScreen> {
                         ActionChip(
                           avatar: const Icon(Icons.wifi_rounded, size: 15, color: kPrimaryColor),
                           label: const Text('Host PC Wi-Fi (192.168.1.9:8001)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          backgroundColor: kBackgroundColor,
+                          backgroundColor: isDark ? kDarkSurfaceColor : kBackgroundColor,
                           onPressed: () {
                             serverController.text = 'http://192.168.1.9:8001';
                             runTest('http://192.168.1.9:8001');
@@ -225,7 +226,7 @@ class _CameraScreenState extends State<CameraScreen> {
                         ActionChip(
                           avatar: const Icon(Icons.cloud_done_rounded, size: 15, color: Color(0xFF0284C7)),
                           label: const Text('Google Cloud Run (Online)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          backgroundColor: const Color(0xFFF0F9FF),
+                          backgroundColor: isDark ? const Color(0xFF0C243B) : const Color(0xFFF0F9FF),
                           onPressed: () {
                             serverController.text = 'https://phytonet-ai-792382083515.us-central1.run.app';
                             runTest('https://phytonet-ai-792382083515.us-central1.run.app');
@@ -234,7 +235,7 @@ class _CameraScreenState extends State<CameraScreen> {
                         ActionChip(
                           avatar: const Icon(Icons.phone_android_rounded, size: 15, color: Color(0xFFD97706)),
                           label: const Text('Emulator (10.0.2.2:8001)', style: TextStyle(fontSize: 11)),
-                          backgroundColor: kBackgroundColor,
+                          backgroundColor: isDark ? kDarkSurfaceColor : kBackgroundColor,
                           onPressed: () {
                             serverController.text = 'http://10.0.2.2:8001';
                             runTest('http://10.0.2.2:8001');
@@ -243,7 +244,7 @@ class _CameraScreenState extends State<CameraScreen> {
                         ActionChip(
                           avatar: const Icon(Icons.usb_rounded, size: 15, color: Colors.grey),
                           label: const Text('ADB Reverse (127.0.0.1:8001)', style: TextStyle(fontSize: 11)),
-                          backgroundColor: kBackgroundColor,
+                          backgroundColor: isDark ? kDarkSurfaceColor : kBackgroundColor,
                           onPressed: () {
                             serverController.text = 'http://127.0.0.1:8001';
                             runTest('http://127.0.0.1:8001');

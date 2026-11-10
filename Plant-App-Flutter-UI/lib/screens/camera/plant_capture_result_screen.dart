@@ -35,10 +35,11 @@ class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
           : 'Identified via AI diagnosis: $conditionName.',
     );
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? kDarkCardColor : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),

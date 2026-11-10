@@ -2,7 +2,10 @@ import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
+import 'package:urbangreen/components/achievements_sheet.dart';
 import 'package:urbangreen/constants.dart';
+import 'package:urbangreen/models/theme_provider.dart';
 import 'package:urbangreen/models/user_model.dart';
 import 'package:urbangreen/screens/account/change_password_screen.dart';
 import 'package:urbangreen/screens/account/change_username_screen.dart';
@@ -12,6 +15,7 @@ import 'package:urbangreen/screens/auth/login_screen.dart';
 import 'package:urbangreen/screens/garden/plant_list_screen.dart';
 import 'package:urbangreen/screens/iot/iot_management_screen.dart';
 import 'package:urbangreen/screens/reports/reports_screen.dart';
+import 'package:urbangreen/services/achievement_service.dart';
 import 'package:urbangreen/services/auth_service.dart';
 import 'package:urbangreen/services/user_service.dart';
 
@@ -226,9 +230,9 @@ class _AccountScreenState extends State<AccountScreen> {
     }
   }
 
-  ImageProvider _getAvatarImage(String? photoUrl) {
+  ImageProvider? _getAvatarImage(String? photoUrl) {
     if (photoUrl == null || photoUrl.isEmpty) {
-      return const AssetImage('assets/images/user_placeholder.png');
+      return null;
     }
     if (photoUrl.startsWith('http')) {
       return NetworkImage(photoUrl);
@@ -236,19 +240,21 @@ class _AccountScreenState extends State<AccountScreen> {
     if (File(photoUrl).existsSync()) {
       return FileImage(File(photoUrl));
     }
-    return const AssetImage('assets/images/user_placeholder.png');
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
     final currentUser = _authService.currentUser;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     if (currentUser == null) {
       return _buildGuestAccountView();
     }
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       body: StreamBuilder<UserModel?>(
         stream: _userService.getUserProfileStream(currentUser.uid),
         builder: (context, snapshot) {
@@ -263,7 +269,7 @@ class _AccountScreenState extends State<AccountScreen> {
               SliverAppBar(
                 expandedHeight: 220,
                 pinned: true,
-                backgroundColor: kSurfaceColor,
+                backgroundColor: isDark ? kDarkSurfaceColor : kSurfaceColor,
                 surfaceTintColor: Colors.transparent,
                 flexibleSpace: FlexibleSpaceBar(
                   background: Container(
@@ -271,8 +277,8 @@ class _AccountScreenState extends State<AccountScreen> {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          kAccentMint.withValues(alpha: 0.6),
-                          kBackgroundColor,
+                          isDark ? kDarkSurfaceColor : kAccentMint.withValues(alpha: 0.6),
+                          isDark ? kDarkBackgroundColor : kBackgroundColor,
                         ],
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
@@ -287,6 +293,9 @@ class _AccountScreenState extends State<AccountScreen> {
                               radius: 44,
                               backgroundColor: kPrimaryColor.withValues(alpha: 0.15),
                               backgroundImage: _getAvatarImage(photoUrl),
+                              child: _getAvatarImage(photoUrl) == null
+                                  ? const Icon(Icons.person, size: 44, color: kPrimaryColor)
+                                  : null,
                             ),
                             Positioned(
                               bottom: 0,
@@ -314,17 +323,17 @@ class _AccountScreenState extends State<AccountScreen> {
                         const SizedBox(height: 10),
                         Text(
                           username,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
-                            color: kTextPrimary,
+                            color: isDark ? kDarkTextPrimary : kTextPrimary,
                           ),
                         ),
                         Text(
                           email,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey.shade600,
+                            color: isDark ? kDarkTextSecondary : Colors.grey.shade600,
                           ),
                         ),
                       ],
@@ -340,6 +349,14 @@ class _AccountScreenState extends State<AccountScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Achievements & Milestones Group
+                      _buildAchievementsCard(),
+                      const SizedBox(height: 18),
+
+                      // Appearance & Theme Group
+                      _buildAppearanceSection(),
+                      const SizedBox(height: 18),
+
                       // Garden & Activity Group
                       _buildSectionHeader('Garden & Orders'),
                       const SizedBox(height: 8),
@@ -539,14 +556,16 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Widget _buildGuestAccountView() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
             expandedHeight: 220,
             pinned: true,
-            backgroundColor: kSurfaceColor,
+            backgroundColor: isDark ? kDarkSurfaceColor : kSurfaceColor,
             surfaceTintColor: Colors.transparent,
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
@@ -554,8 +573,8 @@ class _AccountScreenState extends State<AccountScreen> {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      kAccentMint.withValues(alpha: 0.6),
-                      kBackgroundColor,
+                      isDark ? kDarkSurfaceColor : kAccentMint.withValues(alpha: 0.6),
+                      isDark ? kDarkBackgroundColor : kBackgroundColor,
                     ],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
@@ -567,10 +586,10 @@ class _AccountScreenState extends State<AccountScreen> {
                     CircleAvatar(
                       radius: 44,
                       backgroundColor: kPrimaryColor.withValues(alpha: 0.15),
-                      backgroundImage: const AssetImage('assets/images/user_placeholder.png'),
+                      child: const Icon(Icons.person_outline_rounded, size: 44, color: kPrimaryColor),
                     ),
                     const SizedBox(height: 10),
-                    const Row(
+                    Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
@@ -578,18 +597,18 @@ class _AccountScreenState extends State<AccountScreen> {
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
-                            color: kTextPrimary,
+                            color: isDark ? kDarkTextPrimary : kTextPrimary,
                           ),
                         ),
-                        SizedBox(width: 6),
-                        Icon(Icons.explore_outlined, color: kPrimaryColor, size: 18),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.explore_outlined, color: kPrimaryColor, size: 18),
                       ],
                     ),
                     Text(
                       'Browsing offline & local mode • No account linked',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey.shade600,
+                        color: isDark ? kDarkTextSecondary : Colors.grey.shade600,
                       ),
                     ),
                   ],
@@ -610,7 +629,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       borderRadius: BorderRadius.circular(16),
                       side: BorderSide(color: kPrimaryColor.withValues(alpha: 0.3)),
                     ),
-                    color: kSurfaceColor,
+                    color: isDark ? kDarkCardColor : kSurfaceColor,
                     child: Padding(
                       padding: const EdgeInsets.all(18.0),
                       child: Column(
@@ -666,7 +685,15 @@ class _AccountScreenState extends State<AccountScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 18),
+
+                  // Achievements & Milestones Group (Guest mode supported)
+                  _buildAchievementsCard(),
+                  const SizedBox(height: 18),
+
+                  // Appearance & Theme Group
+                  _buildAppearanceSection(),
+                  const SizedBox(height: 18),
 
                   // Garden & Features Group
                   _buildSectionHeader('Local Features'),
@@ -751,15 +778,186 @@ class _AccountScreenState extends State<AccountScreen> {
     );
   }
 
+  Widget _buildAchievementsCard() {
+    final achievements = AchievementService().getAchievements();
+    final unlockedCount = achievements.where((a) => a.isUnlocked).length;
+    final totalCount = achievements.length;
+    final progress = totalCount > 0 ? unlockedCount / totalCount : 0.0;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: const Color(0xFFE9C46A).withValues(alpha: 0.4),
+          width: 1.2,
+        ),
+      ),
+      color: isDark ? kDarkCardColor : const Color(0xFFFFFDF5),
+      child: InkWell(
+        onTap: () => AchievementsSheet.show(context),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE9C46A).withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.emoji_events_rounded,
+                      color: Color(0xFFD4A373),
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Gardener Milestones',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          '$unlockedCount of $totalCount Unlocked • Tap to view badges',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 6,
+                  backgroundColor: isDark ? kDarkBorderSubtle : Colors.grey.shade200,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    progress >= 1.0 ? Colors.green.shade600 : const Color(0xFFD4A373),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: achievements.map((a) {
+                    return Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: a.isUnlocked
+                            ? a.color.withValues(alpha: 0.12)
+                            : (isDark ? kDarkSurfaceColor : Colors.grey.shade100),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: a.isUnlocked
+                              ? a.color.withValues(alpha: 0.3)
+                              : Colors.transparent,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            a.icon,
+                            size: 13,
+                            color: a.isUnlocked ? a.color : Colors.grey.shade400,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            a.title,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: a.isUnlocked ? FontWeight.bold : FontWeight.normal,
+                              color: a.isUnlocked ? a.color : Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAppearanceSection() {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDark = themeProvider.isDarkMode;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader('Appearance & Display'),
+        const SizedBox(height: 8),
+        Card(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: SwitchListTile(
+            secondary: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.amber.withValues(alpha: 0.15)
+                    : Colors.blueGrey.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                color: isDark ? Colors.amber : Colors.blueGrey.shade700,
+                size: 20,
+              ),
+            ),
+            title: const Text(
+              'Botanical Dark Mode',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+            ),
+            subtitle: Text(
+              isDark
+                  ? 'Night obsidian theme active'
+                  : 'Daylight porcelain theme active',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+            value: isDark,
+            onChanged: (val) => themeProvider.toggleTheme(),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildSectionHeader(String title) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(left: 4),
       child: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.bold,
-          color: kTextPrimary,
+          color: theme.colorScheme.onSurface,
         ),
       ),
     );
@@ -772,6 +970,7 @@ class _AccountScreenState extends State<AccountScreen> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: CircleAvatar(
@@ -781,13 +980,13 @@ class _AccountScreenState extends State<AccountScreen> {
       ),
       title: Text(
         title,
-        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: isDark ? kDarkTextPrimary : kTextPrimary),
       ),
       subtitle: Text(
         subtitle,
-        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : Colors.grey.shade600),
       ),
-      trailing: const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+      trailing: Icon(Icons.chevron_right, size: 18, color: isDark ? kDarkTextSecondary : Colors.grey),
       onTap: onTap,
     );
   }

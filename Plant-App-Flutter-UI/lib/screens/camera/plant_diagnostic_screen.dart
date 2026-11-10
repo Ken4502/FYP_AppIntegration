@@ -12,6 +12,7 @@ import 'package:urbangreen/models/cart_item_model.dart';
 import 'package:urbangreen/models/cart_model.dart';
 import 'package:urbangreen/models/product_model.dart';
 import 'package:urbangreen/screens/shop/cart_screen.dart';
+import 'package:urbangreen/services/achievement_service.dart';
 
 
 class PlantDiagnosticScreen extends StatelessWidget {
@@ -26,6 +27,9 @@ class PlantDiagnosticScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (diagnosis != null) {
+      AchievementService().recordDiagnosticScan();
+    }
     final theme = Theme.of(context);
 
     // Fallback default values if screen opened without live scan
@@ -42,8 +46,10 @@ class PlantDiagnosticScreen extends StatelessWidget {
     final abiotic = diagnosis?.abiotic;
     final coAlerts = diagnosis?.coAlerts ?? [];
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: StandardAppBar(
         title: 'Pathology Diagnostics',
         subtitle: 'AI disease detection & care regimen',
@@ -61,11 +67,11 @@ class PlantDiagnosticScreen extends StatelessWidget {
                         width: 38,
                         height: 38,
                         decoration: BoxDecoration(
-                          color: kBackgroundColor,
+                          color: isDark ? kDarkSurfaceColor : kBackgroundColor,
                           shape: BoxShape.circle,
-                          border: Border.all(color: kBorderSubtle, width: 1.2),
+                          border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle, width: 1.2),
                         ),
-                        child: const Icon(Icons.shopping_cart_outlined, size: 19, color: kTextPrimary),
+                        child: Icon(Icons.shopping_cart_outlined, size: 19, color: isDark ? kDarkTextPrimary : kTextPrimary),
                       ),
                       tooltip: 'View Cart',
                       onPressed: () {
