@@ -206,6 +206,15 @@ class _CameraScreenState extends State<CameraScreen> {
                         ),
                         ActionChip(
                           avatar: const Icon(Icons.wifi_rounded, size: 15, color: kPrimaryColor),
+                          label: const Text('Host PC Wi-Fi (192.168.1.4:8001)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          backgroundColor: kBackgroundColor,
+                          onPressed: () {
+                            serverController.text = 'http://192.168.1.4:8001';
+                            runTest('http://192.168.1.4:8001');
+                          },
+                        ),
+                        ActionChip(
+                          avatar: const Icon(Icons.wifi_rounded, size: 15, color: kPrimaryColor),
                           label: const Text('Host PC Wi-Fi (192.168.1.9:8001)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                           backgroundColor: kBackgroundColor,
                           onPressed: () {

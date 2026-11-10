@@ -56,6 +56,7 @@ class PlantApiService {
     }
 
     // High priority: Current Host PC Wi-Fi IP (Port 8001)
+    candidates.add('http://192.168.1.4:8001');
     candidates.add('http://192.168.1.9:8001');
     // Google Cloud Run
     candidates.add('https://phytonet-ai-792382083515.us-central1.run.app');
