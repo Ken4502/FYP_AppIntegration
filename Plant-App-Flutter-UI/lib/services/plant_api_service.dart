@@ -15,10 +15,10 @@ class PlantApiService {
 
   /// Default API endpoint:
   /// - Host PC Wi-Fi IP: http://192.168.1.4:8001 (Port 8001 PhytoCare Ultra)
-  /// - Cloudflare Tunnel: https://promotional-chocolate-born-zus.trycloudflare.com
+  /// - Cloudflare Tunnel: https://segments-gaming-equity-gnome.trycloudflare.com
   /// - Google Cloud Run: https://phytonet-ai-792382083515.us-central1.run.app
   /// - Android Emulator: http://10.0.2.2:8001
-  static String _serverUrl = 'http://192.168.1.4:8001';
+  static String _serverUrl = 'https://segments-gaming-equity-gnome.trycloudflare.com';
 
   static String get serverUrl => _serverUrl;
 
@@ -59,8 +59,8 @@ class PlantApiService {
       candidates.add(saved.trim());
     }
 
-    // High priority: Current Host PC Wi-Fi IP (Port 8001) and active Cloudflare Tunnel
-    candidates.add('https://promotional-chocolate-born-zus.trycloudflare.com');
+    // High priority: Active Cloudflare Tunnel and Current Host PC Wi-Fi IP (Port 8001)
+    candidates.add('https://segments-gaming-equity-gnome.trycloudflare.com');
     candidates.add('http://192.168.1.4:8001');
     // Google Cloud Run
     candidates.add('https://phytonet-ai-792382083515.us-central1.run.app');

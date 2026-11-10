@@ -201,8 +201,8 @@ class _CameraScreenState extends State<CameraScreen> {
                           label: const Text('Online Cloud Tunnel (HTTPS)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0284C7))),
                           backgroundColor: const Color(0xFFF0F9FF),
                           onPressed: () {
-                            serverController.text = 'https://promotional-chocolate-born-zus.trycloudflare.com';
-                            runTest('https://promotional-chocolate-born-zus.trycloudflare.com');
+                            serverController.text = 'https://segments-gaming-equity-gnome.trycloudflare.com';
+                            runTest('https://segments-gaming-equity-gnome.trycloudflare.com');
                           },
                         ),
                         ActionChip(
