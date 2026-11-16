@@ -444,7 +444,7 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen>
           _isConnecting = false;
           _provisionError = res.message.isNotEmpty
               ? res.message
-              : 'Failed to connect. Please verify your Wi-Fi password and ensure the network is 2.4GHz.';
+              : 'Wi-Fi connection failed. Reconnect your phone to the "SmartPlant-ESP32" hotspot and try again.';
         });
       }
     } catch (e) {
@@ -452,7 +452,7 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen>
         setState(() {
           _isConnecting = false;
           _provisionError =
-              'Connection timed out. Check that your Wi-Fi password is correct and your router is operating on 2.4GHz.';
+              'Connection timed out or failed. Reconnect your phone to the "SmartPlant-ESP32" hotspot and try again.';
         });
       }
     }
@@ -1605,7 +1605,7 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen>
         ),
         const SizedBox(height: 16),
 
-        // Reconnect Phone to Home Wi-Fi prompt
+        // Active Internet & Refresh instruction banner
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -1618,18 +1618,19 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen>
             children: [
               const Row(
                 children: [
-                  Icon(Icons.wifi_rounded, color: Color(0xFF2563EB), size: 18),
+                  Icon(Icons.cloud_done_rounded, color: Color(0xFF2563EB), size: 18),
                   SizedBox(width: 8),
                   Text(
-                    'Next Step: Reconnect Your Phone',
+                    'Active Internet & Dashboard Refresh',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E40AF)),
                   ),
                 ],
               ),
               const SizedBox(height: 6),
               Text(
-                'Your phone may still be connected to "SmartPlant-ESP32". Reconnect your phone to "${_ssidController.text}" or use Mobile Data to communicate with your sensor.',
-                style: const TextStyle(fontSize: 11, color: Color(0xFF1E3A8A), height: 1.3),
+                '1. Ensure your phone has an active internet connection (reconnect to "${_ssidController.text}" or Mobile Data).\n'
+                '2. On the IoT Dashboard, tap the built-in circular Refresh button (sync icon) to immediately fetch the latest live telemetry and local weather.',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF1E3A8A), height: 1.4),
               ),
               const SizedBox(height: 10),
               SizedBox(

@@ -7,6 +7,8 @@ import '../../models/iot_connection_mode.dart';
 import '../../models/iot_device_model.dart';
 import '../../models/plant_model.dart';
 import '../../services/iot_hybrid_connectivity_service.dart';
+import '../../services/iot_firestore_service.dart';
+import '../../services/weather_service.dart';
 import '../../services/plant_service.dart';
 import '../../services/low_moisture_decision_service.dart';
 import 'low_moisture_decision_screen.dart';
@@ -26,14 +28,22 @@ class IotDetailsScreen extends StatefulWidget {
 class _IotDetailsScreenState extends State<IotDetailsScreen>
     with SingleTickerProviderStateMixin {
   final IotHybridConnectivityService _service = IotHybridConnectivityService();
+  final IotFirestoreService _firestoreService = IotFirestoreService();
+  final WeatherService _weatherService = WeatherService();
   late TabController _tabController;
 
-  // Real-time Telemetry State
+  // Real-time Firestore Telemetry State
+  StreamSubscription<IotDevice?>? _deviceFirestoreSub;
   Timer? _telemetryTimer;
   bool _isAutoPolling = true;
   bool _isConnected = false;
   int _latencyMs = 0;
-  DateTime? _lastPollTime;
+  DateTime? _lastReadingAt;
+  DateTime? _lastWateredAt;
+
+  // Real-time Local Weather
+  WeatherData? _weatherData;
+  bool _isLoadingWeather = false;
 
   // Live Hardware Values
   int _moisturePercent = 0;
@@ -42,7 +52,6 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   String _mode = 'AUTO'; // 'AUTO' or 'MANUAL'
   bool _activeHigh = true;
   final List<int> _moistureHistory = [];
-  final List<String> _eventLogs = [];
   static const int _maxHistoryPoints = 30;
 
   // Pump stopwatch
@@ -76,12 +85,17 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
 
     _moisturePercent = widget.device.moistureLevel?.round() ?? 0;
     _mode = widget.device.autoWaterEnabled ? 'AUTO' : 'MANUAL';
+    _isConnected = widget.device.isOnline;
+    _lastReadingAt = widget.device.lastReadingAt ?? widget.device.lastSeen;
+    _lastWateredAt = widget.device.lastWateredAt;
 
     final initialSsid = widget.device.wifiSsid ?? _service.registeredHomeSsid ?? '';
     _wifiSsidController = TextEditingController(text: initialSsid);
     _wifiPassController = TextEditingController();
     _showWifiForm = !widget.device.isWifiConnected || widget.device.wifiSsid == null || widget.device.wifiSsid!.isEmpty;
 
+    _loadWeather();
+    _subscribeFirestore();
     _startPolling();
   }
 
@@ -93,6 +107,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   void dispose() {
     _tabController.dispose();
     _plantService.removeListener(_onPlantServiceChanged);
+    _deviceFirestoreSub?.cancel();
     _stopPolling();
     _stopwatchTimer?.cancel();
     _wifiSsidController.dispose();
@@ -100,10 +115,80 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     super.dispose();
   }
 
+  Future<void> _loadWeather() async {
+    if (_isLoadingWeather) return;
+    setState(() => _isLoadingWeather = true);
+    try {
+      final w = await _weatherService.fetchLocalWeather();
+      if (mounted) {
+        setState(() {
+          _weatherData = w;
+          _isLoadingWeather = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingWeather = false);
+    }
+  }
+
+  void _subscribeFirestore() {
+    _deviceFirestoreSub?.cancel();
+    _deviceFirestoreSub = _firestoreService.streamDevice(widget.device.id).listen((device) {
+      if (!mounted || device == null) return;
+      _updateFromDevice(device);
+    });
+  }
+
+  void _updateFromDevice(IotDevice device) {
+    final int mPct = (device.moistureLevel != null)
+        ? (device.moistureLevel! * 100).round()
+        : _moisturePercent;
+    final int raw = device.rawAdc ?? _rawAdc;
+    final bool pump = device.isPumpRunning;
+    final String modeStr = device.autoWaterEnabled ? 'AUTO' : 'MANUAL';
+
+    if (pump && !_isPumpRunning) {
+      _pumpStartTime = DateTime.now();
+      _startStopwatch();
+    } else if (!pump && _isPumpRunning) {
+      _pumpStartTime = null;
+      _stopwatchTimer?.cancel();
+      _pumpElapsedSeconds = 0;
+    }
+
+    setState(() {
+      _isConnected = device.isOnline;
+      _lastReadingAt = device.lastReadingAt ?? device.lastSeen;
+      _lastWateredAt = device.lastWateredAt;
+      _moisturePercent = mPct;
+      _rawAdc = raw;
+      _isPumpRunning = pump;
+      _mode = modeStr;
+
+      _moistureHistory.add(mPct);
+      if (_moistureHistory.length > _maxHistoryPoints) {
+        _moistureHistory.removeAt(0);
+      }
+    });
+  }
+
+  String _formatDateTime(DateTime? dt) {
+    if (dt == null) return 'Never';
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inSeconds < 60) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    final monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final minute = dt.minute.toString().padLeft(2, '0');
+    return '${monthNames[dt.month - 1]} ${dt.day}, $hour:$minute';
+  }
+
   void _startPolling() {
     _stopPolling();
     _fetchTelemetry();
-    _telemetryTimer = Timer.periodic(const Duration(milliseconds: 1200), (_) {
+    _telemetryTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (_isAutoPolling && mounted) {
         _fetchTelemetry();
       }
@@ -117,49 +202,15 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
 
   Future<void> _fetchTelemetry() async {
     final sw = Stopwatch()..start();
-    final data = await _service.fetchLiveHardwareTelemetry();
+    _loadWeather();
+    final dev = await _firestoreService.getDevice(widget.device.id);
     sw.stop();
 
     if (!mounted) return;
 
-    if (data != null) {
-      final int mPct = (data['moisture'] is num) ? (data['moisture'] as num).toInt() : 0;
-      final int raw = (data['raw'] is num) ? (data['raw'] as num).toInt() : 3200;
-      final bool pump = data['pump'] == 1 || data['pump'] == true;
-      final String modeStr = (data['mode'] ?? 'AUTO').toString().toUpperCase();
-      final bool actHigh = data['activeHigh'] == 1 || data['activeHigh'] == true;
-      final String msg = (data['msg'] ?? '').toString();
-
-      // Track pump duration
-      if (pump && !_isPumpRunning) {
-        _pumpStartTime = DateTime.now();
-        _startStopwatch();
-      } else if (!pump && _isPumpRunning) {
-        _pumpStartTime = null;
-        _stopwatchTimer?.cancel();
-        _pumpElapsedSeconds = 0;
-      }
-
-      setState(() {
-        _isConnected = true;
-        _latencyMs = sw.elapsedMilliseconds;
-        _lastPollTime = DateTime.now();
-        _moisturePercent = mPct;
-        _rawAdc = raw;
-        _isPumpRunning = pump;
-        _mode = modeStr;
-        _activeHigh = actHigh;
-
-        if (msg.isNotEmpty && (_eventLogs.isEmpty || _eventLogs.first != msg)) {
-          _eventLogs.insert(0, msg);
-          if (_eventLogs.length > 20) _eventLogs.removeLast();
-        }
-
-        _moistureHistory.add(mPct);
-        if (_moistureHistory.length > _maxHistoryPoints) {
-          _moistureHistory.removeAt(0);
-        }
-      });
+    if (dev != null) {
+      _latencyMs = sw.elapsedMilliseconds;
+      _updateFromDevice(dev);
     } else {
       if (_isConnected) {
         setState(() => _isConnected = false);
@@ -2098,6 +2149,115 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   }
 
   // =========================================================================
+  // REAL-TIME LOCAL WEATHER WIDGET
+  // =========================================================================
+  Widget _buildRealTimeWeatherCard(bool isDark) {
+    if (_weatherData == null && _isLoadingWeather) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isDark ? kDarkCardColor : kSurfaceColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+        ),
+        child: const Center(
+          child: SizedBox(
+            height: 20,
+            width: 20,
+            child: CircularProgressIndicator(strokeWidth: 2, color: kPrimaryColor),
+          ),
+        ),
+      );
+    }
+
+    final weather = _weatherData;
+    if (weather == null) return const SizedBox.shrink();
+
+    final isRainGuard = weather.isRainGuardActive;
+    final guardBg = isRainGuard ? const Color(0xFFEFF6FF) : const Color(0xFFF0FDF4);
+    final guardBorder = isRainGuard ? const Color(0xFFBFDBFE) : const Color(0xFFBBF7D0);
+    final guardTextColor = isRainGuard ? const Color(0xFF1D4ED8) : const Color(0xFF15803D);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? kDarkCardColor : kSurfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                weather.weatherIcon,
+                style: const TextStyle(fontSize: 22),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${weather.locationName} • ${weather.weatherCondition}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: isDark ? kDarkTextPrimary : kTextPrimary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${weather.temperature.toStringAsFixed(1)}°C • ${weather.relativeHumidity}% Humidity • Rain: ${weather.rainAmount}mm (${weather.precipitationProbability}%)',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? kDarkTextSecondary : kTextSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.black26 : guardBg,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: guardBorder),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    weather.rainGuardMessage,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? (isRainGuard ? Colors.blue.shade200 : Colors.green.shade200) : guardTextColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // =========================================================================
   // PANEL 1: PLANT & HYDRATION CARE (PRIMARY & DEFAULT TAB)
   // =========================================================================
   Widget _buildPlantAndCarePanel() {
@@ -2112,7 +2272,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
         children: [
           // 1. Live status banner (Friendly & reassuring)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: _isConnected ? kStatusSuccess.withValues(alpha: 0.1) : const Color(0xFFFEF3C7),
               borderRadius: BorderRadius.circular(12),
@@ -2123,8 +2283,8 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
             child: Row(
               children: [
                 Container(
-                  width: 8,
-                  height: 8,
+                  width: 9,
+                  height: 9,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: _isConnected ? kStatusSuccess : const Color(0xFFD97706),
@@ -2132,33 +2292,51 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    _isConnected
-                        ? 'Connected • Live Sensor Telemetry Active${_lastPollTime != null ? " (${_lastPollTime!.minute.toString().padLeft(2, '0')}:${_lastPollTime!.second.toString().padLeft(2, '0')})" : ""}'
-                        : 'Offline / Searching for Sensor...',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: _isConnected ? kStatusSuccess : const Color(0xFFB45309),
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _isConnected ? 'Device Online • Heartbeat Active' : 'Device Offline / Standby',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: _isConnected ? kStatusSuccess : const Color(0xFFB45309),
+                        ),
+                      ),
+                      Text(
+                        _isConnected
+                            ? 'Last reading: ${_formatDateTime(_lastReadingAt)}'
+                            : 'Last seen: ${_formatDateTime(widget.device.lastSeen)}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: _isConnected ? kStatusSuccess.withValues(alpha: 0.8) : const Color(0xFF92400E),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                if (_isConnected)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: kStatusSuccess.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${_latencyMs}ms',
-                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: kStatusSuccess),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: (_isConnected ? kStatusSuccess : const Color(0xFFD97706)).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _isConnected ? 'ONLINE' : 'OFFLINE',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: _isConnected ? kStatusSuccess : const Color(0xFFD97706),
                     ),
                   ),
+                ),
               ],
             ),
           ),
+          const SizedBox(height: 14),
+
+          // Real-Time Local Weather Card
+          _buildRealTimeWeatherCard(isDark),
           const SizedBox(height: 16),
 
           // 2. Linked Specimen Card (Strict 1-to-1 Mapping) - Plant First!
@@ -2268,6 +2446,41 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                           'USB 5V Powered',
                           style: TextStyle(
                             fontSize: 11,
+                            color: isDark ? kDarkTextSecondary : kTextSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                Divider(height: 18, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.schedule_rounded, size: 12, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Last Reading: ${_formatDateTime(_lastReadingAt)}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isDark ? kDarkTextSecondary : kTextSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.water_drop_outlined, size: 12, color: kPrimaryColor),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Last Watered: ${_formatDateTime(_lastWateredAt)}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
                             color: isDark ? kDarkTextSecondary : kTextSecondary,
                           ),
                         ),
@@ -2421,134 +2634,151 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   }
 
   // =========================================================================
-  // PANEL 3: DEVICE ACTIVITY LOGS PANEL
+  // PANEL 3: DEVICE ACTIVITY LOGS PANEL (FIRESTORE & LOCAL SYNC)
   // =========================================================================
   Widget _buildDeviceActivityLogsPanel() {
-    return ValueListenableBuilder<List<IotActivityLog>>(
-      valueListenable: _service.activityLogsNotifier,
-      builder: (context, logs, _) {
-        final deviceLogs = logs.where((l) {
-          if (l.deviceId == widget.device.id) return true;
-          if (l.deviceId == 'SmartPlant-ESP32' && widget.device.id == _service.registeredDeviceId) return true;
-          return logs.length <= 3;
-        }).toList();
+    return StreamBuilder<List<IotActivityLog>>(
+      stream: _firestoreService.streamDeviceLogs(widget.device.id),
+      builder: (context, snapshot) {
+        final cloudLogs = snapshot.data ?? [];
+        return ValueListenableBuilder<List<IotActivityLog>>(
+          valueListenable: _service.activityLogsNotifier,
+          builder: (context, localLogs, _) {
+            final Set<String> seen = {};
+            final List<IotActivityLog> merged = [];
+            for (final log in [...cloudLogs, ...localLogs]) {
+              final key = '${log.title}_${log.timestamp.millisecondsSinceEpoch ~/ 1000}';
+              if (!seen.contains(key)) {
+                seen.add(key);
+                merged.add(log);
+              }
+            }
+            merged.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-        if (deviceLogs.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: kPrimaryColor.withValues(alpha: 0.08),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.receipt_long_rounded, size: 44, color: kPrimaryColor),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'No Logs for This Device Yet',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kTextPrimary),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Real-time sensing, auto-watering cycles, and push notifications for this IoT unit will appear here automatically as they occur.',
-                    style: TextStyle(fontSize: 12, color: kTextSecondary, height: 1.4),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
+            final deviceLogs = merged.where((l) {
+              if (l.deviceId == widget.device.id) return true;
+              if (l.deviceId == 'SmartPlant-ESP32' && widget.device.id == _service.registeredDeviceId) return true;
+              return merged.length <= 3;
+            }).toList();
 
-        return ListView.separated(
-          padding: const EdgeInsets.all(kDefaultPadding),
-          itemCount: deviceLogs.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
-          itemBuilder: (ctx, idx) {
-            final log = deviceLogs[idx];
-            final timeStr = '${log.timestamp.hour.toString().padLeft(2, '0')}:${log.timestamp.minute.toString().padLeft(2, '0')}:${log.timestamp.second.toString().padLeft(2, '0')}';
-            return Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: kSurfaceColor,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: kBorderSubtle),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: log.color.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(log.icon, size: 17, color: log.color),
+            if (deviceLogs.isEmpty) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: kPrimaryColor.withValues(alpha: 0.08),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.receipt_long_rounded, size: 44, color: kPrimaryColor),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'No Logs for This Device Yet',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kTextPrimary),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Real-time sensing, auto-watering cycles, and push notifications for this IoT unit will appear here automatically as they occur.',
+                        style: TextStyle(fontSize: 12, color: kTextSecondary, height: 1.4),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                ),
+              );
+            }
+
+            return ListView.separated(
+              padding: const EdgeInsets.all(kDefaultPadding),
+              itemCount: deviceLogs.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (ctx, idx) {
+                final log = deviceLogs[idx];
+                final timeStr = '${log.timestamp.hour.toString().padLeft(2, '0')}:${log.timestamp.minute.toString().padLeft(2, '0')}:${log.timestamp.second.toString().padLeft(2, '0')}';
+                return Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: kSurfaceColor,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: kBorderSubtle),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: log.color.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(log.icon, size: 17, color: log.color),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Flexible(
-                              child: Text(
-                                log.title,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: kTextPrimary),
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    log.title,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: kTextPrimary),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(timeStr, style: const TextStyle(fontSize: 10, color: kTextSecondary)),
+                              ],
                             ),
-                            const SizedBox(width: 6),
-                            Text(timeStr, style: const TextStyle(fontSize: 10, color: kTextSecondary)),
+                            const SizedBox(height: 3),
+                            Text(log.detail, style: const TextStyle(fontSize: 11, color: kTextSecondary, height: 1.3)),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: log.color.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    log.categoryLabel.toUpperCase(),
+                                    style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: log.color, letterSpacing: 0.4),
+                                  ),
+                                ),
+                                if (log.durationSeconds != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0284C7).withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.25)),
+                                    ),
+                                    child: Text(
+                                      '⏱️ ${log.durationSeconds}s duration',
+                                      style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFF0284C7)),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 3),
-                        Text(log.detail, style: const TextStyle(fontSize: 11, color: kTextSecondary, height: 1.3)),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: log.color.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                log.categoryLabel.toUpperCase(),
-                                style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: log.color, letterSpacing: 0.4),
-                              ),
-                            ),
-                            if (log.durationSeconds != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF0284C7).withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.25)),
-                                ),
-                                child: Text(
-                                  '⏱️ ${log.durationSeconds}s duration',
-                                  style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFF0284C7)),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             );
           },
         );
@@ -2977,6 +3207,12 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                               plantId: plant.id,
                               deviceId: widget.device.id,
                             );
+                            _firestoreService.linkPlant(
+                              widget.device.id,
+                              plantId: plant.id,
+                              plantName: plant.name,
+                              plantImage: plant.imageUrl,
+                            );
 
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -3018,6 +3254,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
             onPressed: () {
               Navigator.pop(dlgContext);
               _plantService.unassignDevice(widget.device.id);
+              _firestoreService.unlinkPlant(widget.device.id);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(

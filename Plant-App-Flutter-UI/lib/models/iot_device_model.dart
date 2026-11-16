@@ -1,6 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class IotDevice {
   final String id;
   String name;
+  String? userId;
   bool isBluetoothConnected; // Deprecated: Kept for serialization compatibility
   bool isWifiConnected;
   String? wifiSsid;
@@ -10,22 +13,38 @@ class IotDevice {
   final bool supportsMoistureSensor;
   final bool supportsAutoWater;
   double? moistureLevel;
+  int? rawAdc;
+  bool isPumpRunning;
   bool autoWaterEnabled;
   String? autoWaterSchedule;
   bool isVerifiedCompatible;
   String serviceUuid;
   String firmwareVersion;
   DateTime lastSeen;
+  DateTime? lastReadingAt;
+  DateTime? lastWateredAt;
+
+  // Threshold Configuration
+  int lowMoistureThreshold; // in percent (e.g. 25)
+  int highMoistureThreshold; // in percent (e.g. 60)
 
   // Low Moisture Notification & Decision Configuration
   bool lowMoistureAlertEnabled;
-  int lowMoistureThreshold; // in percent (e.g. 25)
   DateTime? lowMoistureIgnoredUntil;
   bool lowMoistureAlwaysIgnored;
+
+  // Linked Plant (Strict 1-to-1 Mapping)
+  String? linkedPlantId;
+  String? linkedPlantName;
+  String? linkedPlantImage;
+
+  // Remote Commands
+  Map<String, dynamic>? pendingCommand;
 
   IotDevice({
     required this.id,
     required this.name,
+    this.userId,
     this.isBluetoothConnected = false,
     this.isWifiConnected = true,
     this.wifiSsid,
@@ -35,17 +54,32 @@ class IotDevice {
     this.supportsMoistureSensor = true,
     this.supportsAutoWater = true,
     this.moistureLevel = 0.0,
+    this.rawAdc = 3200,
+    this.isPumpRunning = false,
     this.autoWaterEnabled = false,
     this.autoWaterSchedule,
     this.isVerifiedCompatible = true,
     this.serviceUuid = 'SoftAP-ESP32-Setup',
-    this.firmwareVersion = 'v3.0.0-WiFiManager-ntfy',
+    this.firmwareVersion = 'v4.0.0-Firestore',
     DateTime? lastSeen,
+    this.lastReadingAt,
+    this.lastWateredAt,
     this.lowMoistureAlertEnabled = true,
     this.lowMoistureThreshold = 25,
+    this.highMoistureThreshold = 60,
     this.lowMoistureIgnoredUntil,
     this.lowMoistureAlwaysIgnored = false,
+    this.linkedPlantId,
+    this.linkedPlantName,
+    this.linkedPlantImage,
+    this.pendingCommand,
   }) : lastSeen = lastSeen ?? DateTime.now();
+
+  /// Computed dynamic Online / Offline status based on 2-minute heartbeat window
+  bool get isOnline {
+    final now = DateTime.now();
+    return now.difference(lastSeen).inSeconds < 120;
+  }
 
   /// Whether alerts are currently snoozed/muted
   bool get isLowMoistureAlertIgnored {
@@ -119,6 +153,7 @@ class IotDevice {
     return {
       'id': id,
       'name': name,
+      'userId': userId,
       'isBluetoothConnected': isBluetoothConnected,
       'isWifiConnected': isWifiConnected,
       'wifiSsid': wifiSsid,
@@ -128,44 +163,116 @@ class IotDevice {
       'supportsMoistureSensor': supportsMoistureSensor,
       'supportsAutoWater': supportsAutoWater,
       'moistureLevel': moistureLevel,
+      'moisturePercent': moistureLevel,
+      'rawADC': rawAdc,
+      'raw': rawAdc,
+      'isPumpRunning': isPumpRunning,
       'autoWaterEnabled': autoWaterEnabled,
       'autoWaterSchedule': autoWaterSchedule,
       'isVerifiedCompatible': isVerifiedCompatible,
       'serviceUuid': serviceUuid,
       'firmwareVersion': firmwareVersion,
       'lastSeen': lastSeen.toIso8601String(),
+      'lastReadingAt': lastReadingAt?.toIso8601String(),
+      'lastWateredAt': lastWateredAt?.toIso8601String(),
       'lowMoistureAlertEnabled': lowMoistureAlertEnabled,
       'lowMoistureThreshold': lowMoistureThreshold,
+      'lowThreshold': lowMoistureThreshold,
+      'highMoistureThreshold': highMoistureThreshold,
+      'highThreshold': highMoistureThreshold,
       'lowMoistureIgnoredUntil': lowMoistureIgnoredUntil?.toIso8601String(),
       'lowMoistureAlwaysIgnored': lowMoistureAlwaysIgnored,
+      'linkedPlantId': linkedPlantId,
+      'linkedPlantName': linkedPlantName,
+      'linkedPlantImage': linkedPlantImage,
+      'pendingCommand': pendingCommand,
     };
   }
 
+  static DateTime? _parseDateTime(dynamic val) {
+    if (val == null) return null;
+    if (val is Timestamp) return val.toDate();
+    if (val is DateTime) return val;
+    if (val is String) return DateTime.tryParse(val);
+    if (val is int) return DateTime.fromMillisecondsSinceEpoch(val);
+    return null;
+  }
+
   factory IotDevice.fromMap(Map<String, dynamic> map) {
+    // Robust parsing for moisture
+    double parsedMoisture = 0.0;
+    if (map['moisturePercent'] is num) {
+      parsedMoisture = (map['moisturePercent'] as num).toDouble();
+    } else if (map['moistureLevel'] is num) {
+      parsedMoisture = (map['moistureLevel'] as num).toDouble();
+    } else if (map['moisture'] is num) {
+      parsedMoisture = (map['moisture'] as num).toDouble();
+    }
+
+    // Robust parsing for raw ADC
+    int parsedRawAdc = 3200;
+    if (map['rawADC'] is num) {
+      parsedRawAdc = (map['rawADC'] as num).toInt();
+    } else if (map['rawAdc'] is num) {
+      parsedRawAdc = (map['rawAdc'] as num).toInt();
+    } else if (map['raw'] is num) {
+      parsedRawAdc = (map['raw'] as num).toInt();
+    }
+
+    // Robust parsing for pump running
+    bool parsedPump = false;
+    if (map['isPumpRunning'] is bool) {
+      parsedPump = map['isPumpRunning'] as bool;
+    } else if (map['pump'] != null) {
+      parsedPump = map['pump'] == 1 || map['pump'] == true || map['pump'] == '1';
+    }
+
+    // Robust parsing for timestamps
+    final lastSeen = _parseDateTime(map['lastSeen']) ?? DateTime.now();
+    final lastReading = _parseDateTime(map['lastReadingAt'] ?? map['lastReading']);
+    final lastWatered = _parseDateTime(map['lastWateredAt'] ?? map['lastWatered']);
+    final ignoredUntil = _parseDateTime(map['lowMoistureIgnoredUntil']);
+
+    // Robust parsing for thresholds
+    final lowThresh = (map['lowThreshold'] as num?)?.toInt() ??
+        (map['lowMoistureThreshold'] as num?)?.toInt() ??
+        25;
+    final highThresh = (map['highThreshold'] as num?)?.toInt() ??
+        (map['highMoistureThreshold'] as num?)?.toInt() ??
+        60;
+
     return IotDevice(
-      id: map['id'] as String? ?? 'ESP32-NODE-01',
+      id: map['id'] as String? ?? (map['device'] as String? ?? 'ESP32-NODE-01'),
       name: map['name'] as String? ?? 'Smart Plant Probe',
+      userId: map['userId'] as String? ?? map['registeredBy'] as String?,
       isBluetoothConnected: map['isBluetoothConnected'] as bool? ?? false,
       isWifiConnected: map['isWifiConnected'] as bool? ?? true,
-      wifiSsid: map['wifiSsid'] as String?,
+      wifiSsid: map['wifiSsid'] as String? ?? map['ssid'] as String? ?? map['homeSsid'] as String?,
       ntfyTopic: map['ntfyTopic'] as String? ?? 'urbangreen_esp32_alerts',
       batteryLevel: (map['batteryLevel'] as num?)?.toInt() ?? 95,
       signalStrength: (map['signalStrength'] as num?)?.toInt() ?? -58,
       supportsMoistureSensor: map['supportsMoistureSensor'] as bool? ?? true,
       supportsAutoWater: map['supportsAutoWater'] as bool? ?? true,
-      moistureLevel: (map['moistureLevel'] as num?)?.toDouble() ?? 0.0,
-      autoWaterEnabled: map['autoWaterEnabled'] as bool? ?? false,
+      moistureLevel: parsedMoisture,
+      rawAdc: parsedRawAdc,
+      isPumpRunning: parsedPump,
+      autoWaterEnabled: map['autoWaterEnabled'] as bool? ?? (map['mode'] == 'AUTO'),
       autoWaterSchedule: map['autoWaterSchedule'] as String?,
       isVerifiedCompatible: map['isVerifiedCompatible'] as bool? ?? true,
       serviceUuid: map['serviceUuid'] as String? ?? 'SoftAP-ESP32-Setup',
-      firmwareVersion: map['firmwareVersion'] as String? ?? 'v3.0.0-WiFiManager-ntfy',
-      lastSeen: map['lastSeen'] != null ? DateTime.tryParse(map['lastSeen']) ?? DateTime.now() : DateTime.now(),
+      firmwareVersion: map['firmwareVersion'] as String? ?? 'v4.0.0-Firestore',
+      lastSeen: lastSeen,
+      lastReadingAt: lastReading,
+      lastWateredAt: lastWatered,
       lowMoistureAlertEnabled: map['lowMoistureAlertEnabled'] as bool? ?? true,
-      lowMoistureThreshold: (map['lowMoistureThreshold'] as num?)?.toInt() ?? 25,
-      lowMoistureIgnoredUntil: map['lowMoistureIgnoredUntil'] != null
-          ? DateTime.tryParse(map['lowMoistureIgnoredUntil'].toString())
-          : null,
+      lowMoistureThreshold: lowThresh,
+      highMoistureThreshold: highThresh,
+      lowMoistureIgnoredUntil: ignoredUntil,
       lowMoistureAlwaysIgnored: map['lowMoistureAlwaysIgnored'] as bool? ?? false,
+      linkedPlantId: map['linkedPlantId'] as String?,
+      linkedPlantName: map['linkedPlantName'] as String?,
+      linkedPlantImage: map['linkedPlantImage'] as String?,
+      pendingCommand: map['pendingCommand'] is Map ? Map<String, dynamic>.from(map['pendingCommand'] as Map) : null,
     );
   }
 }

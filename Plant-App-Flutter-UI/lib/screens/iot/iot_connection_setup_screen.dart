@@ -303,7 +303,7 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
         _probeActiveNetwork();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('🎉 Connected! ESP32 joined "$ssid" at ${assignedIp ?? "home network"}. Reconnect your phone to "$ssid"!'),
+            content: Text('🎉 Connected! ESP32 joined "$ssid" (${assignedIp ?? "Cloud Synced"}). Ensure internet connection and tap Refresh on the IoT dashboard!'),
             backgroundColor: kStatusSuccess,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 4),
