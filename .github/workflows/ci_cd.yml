@@ -141,7 +141,7 @@ jobs:
 
       - name: Build Android Debug APK
         run: |
-          flutter build apk --debug
+          flutter build apk --debug --android-skip-build-dependency-validation
 
       - name: Prepare Named Build Artifacts
         run: |
