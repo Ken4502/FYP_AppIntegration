@@ -17,17 +17,27 @@ from pydantic import BaseModel
 from typing import Optional
 from PIL import Image
 import torch
-import numpy as np
 
 EXPERIMENT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(EXPERIMENT_ROOT))
 
 from src import config
 from src.predict import diagnose_plant, load_diagnostic_system
-from src.botanical_identifier import identify_botanical_species, map_species_to_disease_group
+from src.botanical_identifier import identify_botanical_species, map_species_to_disease_group, load_botanical_identifier
+from src.plant_verifier import get_gemini_api_key
 from src.abiotic_analyzer import analyze_abiotic_stress
-from src.plant_validator import validate_is_plant
 from web.disease_benchmark import disease_benchmark_manager
+
+CORETECH_ROOT = EXPERIMENT_ROOT.parent
+if str(CORETECH_ROOT) not in sys.path:
+    sys.path.insert(0, str(CORETECH_ROOT))
+
+try:
+    from CoreTech_v2.src.pipeline_v2 import run_v2_diagnosis
+    V2_AVAILABLE = True
+except Exception as e:
+    print(f"[Warning] CoreTech v2 pipeline could not be loaded: {e}")
+    V2_AVAILABLE = False
 
 app = FastAPI(
     title="PhytoCare Ultra - Plant Pathology Diagnosis & Treatment Advisor",
@@ -93,15 +103,29 @@ async def serve_log_page():
 @app.get("/api/info")
 async def api_info():
     model, classes, spot_detector, kb = load_diagnostic_system()
+    if V2_AVAILABLE:
+        flora_count = 269
+    else:
+        flora_model, flora_classes = load_botanical_identifier()
+        flora_count = len(flora_classes) if flora_classes else 261
     device_str = "NVIDIA RTX 3060 (CUDA)" if "cuda" in str(config.DEVICE).lower() else "CPU"
+    arch_str = (
+        "CoreTech v2 (BioCLIP-2 + EVA-02 + ConvNeXt + DINOv2 MIL + YOLO11m)"
+        if V2_AVAILABLE
+        else f"PhytoCare Ultra ConvNeXt-Small 384px ({len(classes)} Classes + FloraNet-{flora_count} Prior)"
+    )
     return {
         "status": "online",
-        "model_ready": model is not None,
+        "coretech_v2_active": V2_AVAILABLE,
+        "model_ready": True,
         "device": device_str,
-        "num_classes": len(classes),
+        "num_classes": 19 if V2_AVAILABLE else len(classes),
         "classes": classes,
-        "supported_plants": ["Aloe_Vera", "Cactus", "Money_Plant", "Snake_Plant", "Spider_Plant", "Universal_Pests"],
-        "model_architecture": "PhytoCare Ultra ConvNeXt-Small 384px (31 Classes + FloraNet-250 Prior)"
+        "supported_plants": ["Universal_269_Flora_Taxa", "16_Cactaceae_Taxa", "Aloe_Vera", "Cactus", "Money_Plant", "Snake_Plant", "Spider_Plant"],
+        "botanical_prior_classes": flora_count,
+        "gemini_vision_gate_active": get_gemini_api_key() is not None,
+        "family_aggregation_active": getattr(config, "TEST_FAMILY_LEVEL_AGGREGATION", False),
+        "model_architecture": arch_str
     }
 
 @app.get("/api/encyclopedia")
@@ -165,7 +189,11 @@ async def api_benchmark_image(idx: int):
 
 @app.post("/api/predict")
 @app.post("/api/diagnose")
-async def api_predict(file: UploadFile = File(...), plant: str = Form("auto")):
+async def api_predict(
+    file: UploadFile = File(...),
+    plant: str = Form("auto"),
+    gemini_api_key: Optional[str] = Form(None)
+):
     t0 = time.time()
     try:
         contents = await file.read()
@@ -173,40 +201,153 @@ async def api_predict(file: UploadFile = File(...), plant: str = Form("auto")):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image file: {e}")
 
+    # --- CoreTech v2 High-Capacity Online Diagnostic Routing ---
+    if V2_AVAILABLE:
+        try:
+            effective_key = gemini_api_key or get_gemini_api_key()
+            v2_res = run_v2_diagnosis(pil_img, gemini_api_key=effective_key)
+
+            # Ensure PDI rating for Flutter PDI meter widget
+            is_healthy = v2_res.get("diagnosis", {}).get("is_healthy", False)
+            spots_info = v2_res.get("spots", {})
+            inf_area = float(spots_info.get("infected_area_pct", 0.0))
+            has_spots = bool(spots_info.get("has_spots", False))
+            if is_healthy or not has_spots:
+                pdi_grade = 0
+                pdi_label = "Grade 0: Optimal Foliar Health (Clean)"
+                pdi_color = "#10b981"
+                pdi_action = "No pathological interventions required. Maintain routine botanical care."
+            elif inf_area < 2.0:
+                pdi_grade = 1
+                pdi_label = "Grade 1: Trace Inoculum (< 2% Leaf Area)"
+                pdi_color = "#3b82f6"
+                pdi_action = "Early-stage intervention. Selective pruning or gentle horticultural soap spray."
+            elif inf_area < 10.0:
+                pdi_grade = 2
+                pdi_label = "Grade 2: Mild Infection (2 - 10% Leaf Area)"
+                pdi_color = "#f59e0b"
+                pdi_action = "Active treatment needed. Apply organic neem oil spray or botanical bio-fungicide."
+            elif inf_area <= 25.0:
+                pdi_grade = 3
+                pdi_label = "Grade 3: Moderate Infection (10 - 25% Leaf Area)"
+                pdi_color = "#ef4444"
+                pdi_action = "Isolate specimen immediately to prevent drift. Apply targeted systemic chemical control."
+            else:
+                pdi_grade = 4
+                pdi_label = "Grade 4: Severe / Critical Breakdown (> 25% Leaf Area)"
+                pdi_color = "#991b1b"
+                pdi_action = "Critical pathology. Quarantine immediately and execute intensive therapeutic protocol."
+
+            v2_res["pdi_rating"] = {
+                "grade": pdi_grade,
+                "label": pdi_label,
+                "infected_pct": inf_area,
+                "color": pdi_color,
+                "clinical_action": pdi_action,
+            }
+
+            v2_res.setdefault("co_alerts", [])
+
+            # Abiotic stress analysis (compatible with both Web UI & Flutter App)
+            spots_count = int(spots_info.get("spots_count", 0))
+            abiotic_analysis = analyze_abiotic_stress(pil_img, spots_count=spots_count if has_spots else 0)
+
+            stress = v2_res.get("surface_stress", {})
+            hyd = stress.get("hydration_stress", {}) if isinstance(stress, dict) else {}
+            level = "Low"
+            stype = "Normal"
+            rec = "Optimal hydration levels detected on foliage."
+            if hyd.get("severe_underwatering", False):
+                level = "Moderate"
+                stype = "Underwatering Dehydration"
+                rec = "Check soil moisture and perform a deep root soak."
+            elif hyd.get("severe_overwatering", False):
+                level = "Moderate"
+                stype = "Overwatering / Waterlogging"
+                rec = "Pause watering and ensure pot drainage holes are clear."
+
+            abiotic_analysis.update({
+                "chlorosis_score": round(float(stress.get("chlorosis_score", 0.0)), 2) if isinstance(stress, dict) else 0.0,
+                "necrosis_score": round(float(stress.get("necrosis_score", 0.0)), 2) if isinstance(stress, dict) else 0.0,
+                "stress_level": level,
+                "stress_type": stype,
+                "recommendation": rec,
+            })
+            v2_res["abiotic"] = abiotic_analysis
+
+            # Enrich predictions for Web UI interactive breakdown
+            from CoreTech_v2.src.pipeline_v2 import SURFACE_CARE_MAP
+            enriched_preds = []
+            for p in v2_res.get("predictions", []):
+                cname = p.get("class_name", "")
+                care_item = SURFACE_CARE_MAP.get(cname, SURFACE_CARE_MAP["Healthy_Foliage"])
+                p_copy = dict(p)
+                p_copy.setdefault("condition_name", care_item.get("condition_name", cname.replace("_", " ")))
+                p_copy.setdefault("is_healthy", cname == "Healthy_Foliage")
+                p_copy.setdefault("severity", care_item.get("severity", "Moderate"))
+                p_copy.setdefault("category", care_item.get("category", "Pathology"))
+                p_copy.setdefault("care_guide", {
+                    "plant_name": v2_res.get("species", {}).get("name", "Botanical Specimen"),
+                    "condition_name": care_item.get("condition_name", cname.replace("_", " ")),
+                    "is_healthy": cname == "Healthy_Foliage",
+                    "severity": care_item.get("severity", "Moderate"),
+                    "category": care_item.get("category", "Pathology"),
+                    "summary": care_item.get("summary", ""),
+                    "immediate_actions": care_item.get("immediate_actions", []),
+                    "treatment": {"organic": [], "chemical": []},
+                    "prevention": [],
+                    "symptoms": [care_item.get("summary", "")],
+                    "causes": []
+                })
+                enriched_preds.append(p_copy)
+            v2_res["predictions"] = enriched_preds
+
+            # Ensure care_guide has plant_name, condition_name, is_healthy, severity, category
+            cg = v2_res.get("care_guide", {})
+            cg.setdefault("plant_name", v2_res.get("species", {}).get("name", "Botanical Specimen"))
+            cg.setdefault("condition_name", v2_res.get("diagnosis", {}).get("condition_name", "Clean"))
+            cg.setdefault("is_healthy", v2_res.get("diagnosis", {}).get("is_healthy", True))
+            cg.setdefault("severity", v2_res.get("diagnosis", {}).get("severity", "None"))
+            cg.setdefault("category", v2_res.get("diagnosis", {}).get("category", "General"))
+
+            if v2_res.get("status") in ("retake_recommended", "no_plant"):
+                v2_res["status"] = "success"
+
+            return v2_res
+        except Exception as e:
+            print(f"[Error in CoreTech v2 diagnosis]: {e}")
+            import traceback
+            traceback.print_exc()
+
     try:
         # Preprocessed preview thumbnail
         prep_buf = io.BytesIO()
         pil_img.resize((384, 384), Image.BILINEAR).save(prep_buf, format="JPEG", quality=85)
         prep_b64 = "data:image/jpeg;base64," + base64.b64encode(prep_buf.getvalue()).decode("utf-8")
 
-        # 1. LAYER 1: BOTANICAL PLANT IDENTIFICATION (FloraNet-250)
-        id_res = identify_botanical_species(pil_img, top_k=5)
-        botanical_species = id_res["top_species"]
-        botanical_conf = id_res["confidence"]
-        auto_group = id_res["mapped_disease_group"]
-        candidates = id_res["candidates"]
+        # 1. LAYER 1: BOTANICAL PLANT IDENTIFICATION & VERIFICATION GATE
+        id_res = identify_botanical_species(pil_img, top_k=5, gemini_api_key=gemini_api_key)
+        is_plant = id_res.get("is_plant", True)
 
-        # 1.5. PLANT PRESENCE & OUT-OF-DISTRIBUTION (OOD) VERIFICATION GATE
-        np_img = np.array(pil_img)
-        is_plant, plant_score, plant_msg = validate_is_plant(np_img, botanical_conf)
-        if not is_plant and (plant == "auto" or not plant):
+        if not is_plant:
             inference_time_ms = round((time.time() - t0) * 1000, 1)
+            rejection_msg = id_res.get("rejection_reason", "No recognizable plant foliage, leaf tissue, or botanical structure detected.")
             return {
                 "status": "success",
                 "is_plant": False,
                 "inference_time_ms": inference_time_ms,
                 "disease_available": False,
-                "status_message": plant_msg,
+                "status_message": rejection_msg,
                 "species": {
-                    "name": "Not a Plant",
+                    "name": "No Plant Detected",
                     "confidence": 0.0,
-                    "detected_mode": "Foliar Presence Verification Gate",
+                    "detected_mode": "Open-Set Botanical Gate (Non-Plant Rejection)",
                     "top_candidates": []
                 },
                 "diagnosis": {
-                    "condition_name": "Non-Plant Object Detected",
-                    "category": "Invalid Specimen",
-                    "is_healthy": False,
+                    "condition_name": "No Plant Detected",
+                    "category": "Non-Plant Specimen",
+                    "is_healthy": True,
                     "confidence": 0.0,
                     "severity": "None"
                 },
@@ -214,33 +355,30 @@ async def api_predict(file: UploadFile = File(...), plant: str = Form("auto")):
                     "has_spots": False,
                     "spots_count": 0,
                     "infected_area_pct": 0.0,
-                    "status_message": "Foliar inspection skipped: image does not contain plant foliage.",
+                    "status_message": "Spot detection skipped: Subject is not a recognized botanical specimen.",
                     "annotated_image_base64": prep_b64
                 },
                 "care_guide": {
-                    "plant_name": "None",
-                    "condition_name": "No Plant Detected",
-                    "is_healthy": False,
-                    "severity": "None",
-                    "category": "Invalid Specimen",
-                    "summary": f"The AI scanned the image but could not find recognizable plant tissue or foliage. {plant_msg}",
+                    "summary": "The uploaded photo does not appear to contain recognizable plant leaves, stems, or flowers.",
                     "immediate_actions": [
-                        "Point the camera directly at a plant leaf, stem, or foliage.",
-                        "Ensure the plant fills at least 30-50% of the frame.",
-                        "Check lighting and avoid extreme glare, shadows, or blur."
+                        "Point the camera directly at plant leaves, stems, or flowers.",
+                        "Ensure the botanical specimen fills at least 50% of the frame.",
+                        "Check that ambient lighting is adequate and avoids strong reflections."
                     ],
                     "treatment": {"organic": [], "chemical": []},
-                    "prevention": [
-                        "Hold your phone steady while taking the photo.",
-                        "Center the plant leaf in the camera viewfinder."
-                    ],
-                    "symptoms": ["Unrecognized background or non-botanical subject."],
-                    "causes": ["Camera aimed at a non-plant subject or out-of-focus background."]
+                    "prevention": ["Photograph living plant tissue rather than furniture, screens, or backgrounds."],
+                    "symptoms": ["Non-botanical subject matter detected."],
+                    "causes": ["Camera focused on background, electronic devices, walls, or non-plant objects."]
                 },
                 "predictions": [],
                 "abiotic": None,
                 "preprocessed_image_base64": prep_b64
             }
+
+        botanical_species = id_res["top_species"]
+        botanical_conf = id_res["confidence"]
+        auto_group = id_res["mapped_disease_group"]
+        candidates = id_res["candidates"]
 
         # Pathology Model baseline group texture voting
         model, classes, spot_detector, kb = load_diagnostic_system()
@@ -261,10 +399,10 @@ async def api_predict(file: UploadFile = File(...), plant: str = Form("auto")):
             detected_mode = f"User Selected ({plant.replace('_', ' ')})"
             is_supported = True
         elif auto_group is not None and botanical_conf >= 45.0:
-            # High-confidence botanical match from FloraNet-250
+            # High-confidence botanical match from FloraNet-261
             target_group = auto_group
             display_plant = botanical_species
-            detected_mode = "FloraNet-250 Botanical Classifier"
+            detected_mode = "FloraNet-261 Botanical Classifier"
             is_supported = True
         elif top_path_cf >= 50.0:
             # Close-up lesion crop where microscopic pathology features dominate
@@ -275,13 +413,13 @@ async def api_predict(file: UploadFile = File(...), plant: str = Form("auto")):
         elif auto_group is not None:
             target_group = auto_group
             display_plant = botanical_species
-            detected_mode = "FloraNet-250 Consensus"
+            detected_mode = "FloraNet-261 Consensus"
             is_supported = True
         else:
-            # Universal pest screening for all other 245 FloraNet plant species!
+            # Universal pest screening for all other FloraNet plant species!
             target_group = "Universal"
             display_plant = botanical_species
-            detected_mode = "FloraNet-250 Botanical Prior (Universal Pest Screening)"
+            detected_mode = "FloraNet-261 Botanical Prior (Universal Pest Screening)"
             is_supported = True
 
         # 2. Branch: Outside Supported Pathology Taxa
@@ -289,6 +427,7 @@ async def api_predict(file: UploadFile = File(...), plant: str = Form("auto")):
             inference_time_ms = round((time.time() - t0) * 1000, 1)
             return {
                 "status": "success",
+                "is_plant": True,
                 "inference_time_ms": inference_time_ms,
                 "disease_available": False,
                 "status_message": f"Identified as {botanical_species} ({botanical_conf}% confidence). The pathology diagnostic model currently specializes in Aloe Vera, Cacti, Money Plant (Pothos), Snake Plant, and Spider Plant.",
@@ -533,7 +672,8 @@ async def api_predict(file: UploadFile = File(...), plant: str = Form("auto")):
                 "name": display_plant,
                 "confidence": botanical_conf if plant == "auto" else 100.0,
                 "detected_mode": detected_mode,
-                "top_candidates": candidates
+                "top_candidates": candidates,
+                "family_aggregation": id_res.get("family_aggregation", {"active": False})
             },
             "diagnosis": {
                 "condition_name": top_condition_name,

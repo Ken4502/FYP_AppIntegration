@@ -18,6 +18,13 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isAnalyzing = false;
   String _statusMessage = 'Preparing leaf image...';
 
+  @override
+  void initState() {
+    super.initState();
+    // Pre-emptively discover active AI server in the background
+    PlantApiService.ensureActiveServerUrl();
+  }
+
   Future<void> _startDiagnosis() async {
     setState(() {
       _isAnalyzing = true;
@@ -155,6 +162,63 @@ class _CameraScreenState extends State<CameraScreen> {
                       ],
                     ),
 
+                    // Auto-Discovery Button
+                    const SizedBox(height: 14),
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF059669), Color(0xFF10B981)],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.28),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: ElevatedButton.icon(
+                        icon: isTesting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                              )
+                            : const Icon(Icons.sensors_rounded, color: Colors.white, size: 20),
+                        label: Text(
+                          isTesting ? 'Auto-Discovering Server...' : 'Auto-Discover Active AI Server',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: isTesting
+                            ? null
+                            : () async {
+                                setSheetState(() {
+                                  isTesting = true;
+                                  testResult = 'Scanning cloud discovery channel & local network...';
+                                  isOnline = null;
+                                });
+                                final discovered = await PlantApiService.ensureActiveServerUrl(forceRefresh: true);
+                                final ok = await PlantApiService.testEndpoint(discovered);
+                                if (!context.mounted) return;
+                                setSheetState(() {
+                                  isTesting = false;
+                                  serverController.text = discovered;
+                                  isOnline = ok;
+                                  testResult = ok
+                                      ? 'Discovered & Connected: $discovered 🟢'
+                                      : 'No server detected. Please ensure launch.py or run_ai_online_tunnel.bat is active.';
+                                });
+                              },
+                      ),
+                    ),
+
                     if (errorMsg != null) ...[
                       const SizedBox(height: 12),
                       Container(
@@ -179,7 +243,7 @@ class _CameraScreenState extends State<CameraScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Could not reach AI server at ${PlantApiService.serverUrl}.\n\nTo connect, either:\n• Tap "Host PC Wi-Fi (192.168.1.4)" if your phone and PC are on the same Wi-Fi.\n• Or run "run_ai_online_tunnel.bat" on your PC and paste the trycloudflare.com URL below:',
+                              'Could not reach AI server at ${PlantApiService.serverUrl}.\n\n• Tap "Auto-Discover Active AI Server" above to automatically fetch the live Cloudflare/LAN address.\n• Or run "run_ai_online_tunnel.bat" on your PC if the server is stopped.',
                               style: TextStyle(fontSize: 11, color: Colors.red.shade900, height: 1.3),
                             ),
                           ],
@@ -198,11 +262,16 @@ class _CameraScreenState extends State<CameraScreen> {
                       children: [
                         ActionChip(
                           avatar: const Icon(Icons.public_rounded, size: 15, color: Color(0xFF0284C7)),
-                          label: const Text('Online Cloud Tunnel (HTTPS)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0284C7))),
+                          label: const Text('Auto-Fetch Cloud Tunnel', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0284C7))),
                           backgroundColor: const Color(0xFFF0F9FF),
-                          onPressed: () {
-                            serverController.text = 'https://segments-gaming-equity-gnome.trycloudflare.com';
-                            runTest('https://segments-gaming-equity-gnome.trycloudflare.com');
+                          onPressed: () async {
+                            setSheetState(() {
+                              isTesting = true;
+                              testResult = 'Querying active Cloudflare tunnel...';
+                            });
+                            final discovered = await PlantApiService.ensureActiveServerUrl(forceRefresh: true);
+                            serverController.text = discovered;
+                            await runTest(discovered);
                           },
                         ),
                         ActionChip(
@@ -282,34 +351,26 @@ class _CameraScreenState extends State<CameraScreen> {
                       children: [
                         Expanded(
                           child: OutlinedButton.icon(
-                            icon: const Icon(Icons.play_circle_outline_rounded, size: 18),
-                            label: const Text('Offline Demo Mode'),
+                            icon: const Icon(Icons.close_rounded, size: 18),
+                            label: const Text('Cancel'),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF0284C7),
-                              side: const BorderSide(color: Color(0xFF0284C7)),
+                              foregroundColor: Colors.grey.shade700,
+                              side: BorderSide(color: Colors.grey.shade400),
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             ),
                             onPressed: () {
                               Navigator.pop(ctx);
-                              final demoDiagnosis = PlantApiService.generateOfflineDemoDiagnosis(widget.image);
-                              Navigator.pushReplacement(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => PlantCaptureResultScreen(
-                                    image: widget.image,
-                                    diagnosis: demoDiagnosis,
-                                  ),
-                                ),
-                              );
+                              Navigator.pop(context);
                             },
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
+                          flex: 2,
                           child: ElevatedButton.icon(
                             icon: const Icon(Icons.refresh_rounded, size: 18),
-                            label: const Text('Save & Retry'),
+                            label: const Text('Connect & Diagnose'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: kPrimaryColor,
                               foregroundColor: Colors.white,

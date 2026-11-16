@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:urbangreen/models/plant_diagnosis_model.dart';
@@ -13,12 +15,14 @@ class PlantApiService {
     _loadStoredUrl();
   }
 
-  /// Default API endpoint:
-  /// - Host PC Wi-Fi IP: http://192.168.1.4:8001 (Port 8001 PhytoCare Ultra)
-  /// - Cloudflare Tunnel: https://segments-gaming-equity-gnome.trycloudflare.com
-  /// - Google Cloud Run: https://phytonet-ai-792382083515.us-central1.run.app
-  /// - Android Emulator: http://10.0.2.2:8001
-  static String _serverUrl = 'https://segments-gaming-equity-gnome.trycloudflare.com';
+  static const String discoveryTopic = 'urbangreen_coretech_ai_discovery';
+  static const String discoveryCloudUrl = 'https://ntfy.sh/$discoveryTopic/json?poll=1';
+  static const String discoveryGithubRawUrl =
+      'https://raw.githubusercontent.com/Ken4502/FYP_AppIntegration/main/active_server_url.txt';
+
+  static String _serverUrl = 'http://192.168.1.4:8001';
+  static bool _isDiscovering = false;
+  static DateTime? _lastDiscoverySuccess;
 
   static String get serverUrl => _serverUrl;
 
@@ -26,7 +30,6 @@ class PlantApiService {
     final saved = WebHardwareBridge.loadStorage('ai_server_url');
     if (saved != null && saved.trim().isNotEmpty) {
       final trimmed = saved.trim();
-      // If phone has old 127.0.0.1 or expired tunnel/old IP in storage, auto-upgrade to host PC Wi-Fi IP
       if (!trimmed.contains('127.0.0.1') &&
           !trimmed.contains('backed-strengthening-oecd-pos') &&
           !trimmed.contains('192.168.1.9')) {
@@ -46,7 +49,7 @@ class PlantApiService {
     WebHardwareBridge.saveStorage('ai_server_url', clean);
   }
 
-  /// Known candidates for auto-discovery across physical phone, emulator, and Cloud Run / Cloudflare
+  /// Known candidate endpoints for fallback probing
   static List<String> get candidateUrls {
     final saved = WebHardwareBridge.loadStorage('ai_server_url');
     final Set<String> candidates = {};
@@ -59,43 +62,166 @@ class PlantApiService {
       candidates.add(saved.trim());
     }
 
-    // High priority: Active Cloudflare Tunnel and Current Host PC Wi-Fi IP (Port 8001)
-    candidates.add('https://segments-gaming-equity-gnome.trycloudflare.com');
     candidates.add('http://192.168.1.4:8001');
-    // Google Cloud Run
     candidates.add('https://phytonet-ai-792382083515.us-central1.run.app');
-    // Android Emulator Host Bridge
     candidates.add('http://10.0.2.2:8001');
 
     return candidates.toList();
   }
 
-  /// Auto-discover an active backend server if the current address is unreachable
-  static Future<String> ensureActiveServerUrl() async {
-    _loadStoredUrl();
-
-    if (await testEndpoint(_serverUrl)) {
-      return _serverUrl;
-    }
-
-    for (final candidate in candidateUrls) {
-      if (candidate != _serverUrl && await testEndpoint(candidate)) {
-        setServerUrl(candidate);
+  /// Automatically discovers the active AI server across:
+  /// 1. Real-time Cloud Discovery (ntfy.sh topic)
+  /// 2. Local Wi-Fi UDP Broadcast Beacon (Port 8002)
+  /// 3. Secondary GitHub raw sync
+  /// 4. Local network IP / candidate probes
+  static Future<String?> discoverActiveServer({bool forceRefresh = false}) async {
+    if (!forceRefresh && _serverUrl.isNotEmpty && _lastDiscoverySuccess != null) {
+      if (DateTime.now().difference(_lastDiscoverySuccess!).inSeconds < 45) {
         return _serverUrl;
       }
     }
 
-    return _serverUrl;
+    if (_isDiscovering) {
+      // Avoid duplicate concurrent discovery calls
+      await Future.delayed(const Duration(milliseconds: 300));
+      return _serverUrl;
+    }
+
+    _isDiscovering = true;
+    try {
+      _loadStoredUrl();
+
+      // Quick check: If current _serverUrl is already online and responsive, keep it
+      if (!forceRefresh && await testEndpoint(_serverUrl, timeoutMs: 1500)) {
+        _lastDiscoverySuccess = DateTime.now();
+        return _serverUrl;
+      }
+
+      // Priority 1: Query Global Cloud Discovery Service (ntfy.sh)
+      try {
+        final uri = Uri.parse(discoveryCloudUrl);
+        final res = await http.get(uri).timeout(const Duration(milliseconds: 2800));
+        if (res.statusCode == 200) {
+          final lines = res.body.trim().split('\n').where((l) => l.trim().isNotEmpty).toList();
+          for (final line in lines.reversed) {
+            try {
+              final msgObj = jsonDecode(line) as Map<String, dynamic>;
+              final rawContent = msgObj['message'] ?? msgObj['title'] ?? '';
+              String? tunnelCandidate;
+              String? localCandidate;
+
+              if (rawContent.toString().startsWith('{')) {
+                final payload = jsonDecode(rawContent.toString()) as Map<String, dynamic>;
+                tunnelCandidate = payload['tunnel_url']?.toString();
+                localCandidate = payload['local_url']?.toString();
+              } else if (rawContent.toString().startsWith('http')) {
+                tunnelCandidate = rawContent.toString().trim();
+              }
+
+              // Test tunnel URL first (works globally everywhere)
+              if (tunnelCandidate != null && tunnelCandidate.isNotEmpty) {
+                if (await testEndpoint(tunnelCandidate, timeoutMs: 2200)) {
+                  setServerUrl(tunnelCandidate);
+                  _lastDiscoverySuccess = DateTime.now();
+                  return tunnelCandidate;
+                }
+              }
+
+              // Test local URL next (if device happens to be on local Wi-Fi)
+              if (localCandidate != null && localCandidate.isNotEmpty) {
+                if (await testEndpoint(localCandidate, timeoutMs: 1500)) {
+                  setServerUrl(localCandidate);
+                  _lastDiscoverySuccess = DateTime.now();
+                  return localCandidate;
+                }
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+
+      // Priority 2: Query Local UDP LAN Beacon (Port 8002) for instant Wi-Fi discovery
+      if (!kIsWeb) {
+        try {
+          final rawSocket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+          rawSocket.broadcastEnabled = true;
+          final pingBytes = utf8.encode('URBANGREEN_DISCOVERY_PING');
+          rawSocket.send(pingBytes, InternetAddress('255.255.255.255'), 8002);
+
+          final completer = Completer<String?>();
+          late StreamSubscription sub;
+          sub = rawSocket.listen((event) {
+            if (event == RawSocketEvent.read) {
+              final dg = rawSocket.receive();
+              if (dg != null) {
+                try {
+                  final text = utf8.decode(dg.data);
+                  final map = jsonDecode(text) as Map<String, dynamic>;
+                  final discovered = map['tunnel_url'] ?? map['local_url'];
+                  if (discovered != null && !completer.isCompleted) {
+                    completer.complete(discovered.toString());
+                  }
+                } catch (_) {}
+              }
+            }
+          });
+
+          final udpDiscovered = await completer.future
+              .timeout(const Duration(milliseconds: 1200), onTimeout: () => null);
+          await sub.cancel();
+          rawSocket.close();
+
+          if (udpDiscovered != null && await testEndpoint(udpDiscovered, timeoutMs: 1500)) {
+            setServerUrl(udpDiscovered);
+            _lastDiscoverySuccess = DateTime.now();
+            return udpDiscovered;
+          }
+        } catch (_) {}
+      }
+
+      // Priority 3: Query Secondary GitHub Raw sync
+      try {
+        final gitUri = Uri.parse(discoveryGithubRawUrl);
+        final gitRes = await http.get(gitUri).timeout(const Duration(milliseconds: 2000));
+        if (gitRes.statusCode == 200 && gitRes.body.trim().startsWith('http')) {
+          final gitUrl = gitRes.body.trim().split('\n').first.trim();
+          if (await testEndpoint(gitUrl, timeoutMs: 2000)) {
+            setServerUrl(gitUrl);
+            _lastDiscoverySuccess = DateTime.now();
+            return gitUrl;
+          }
+        }
+      } catch (_) {}
+
+      // Priority 4: Test standard known candidate endpoints
+      for (final candidate in candidateUrls) {
+        if (await testEndpoint(candidate, timeoutMs: 1500)) {
+          setServerUrl(candidate);
+          _lastDiscoverySuccess = DateTime.now();
+          return candidate;
+        }
+      }
+
+      return _serverUrl;
+    } finally {
+      _isDiscovering = false;
+    }
   }
 
-  static Future<bool> testEndpoint(String baseUrl) async {
+  /// Ensure an active server URL is configured, discovering it if needed
+  static Future<String> ensureActiveServerUrl({bool forceRefresh = false}) async {
+    final discovered = await discoverActiveServer(forceRefresh: forceRefresh);
+    return discovered ?? _serverUrl;
+  }
+
+  static Future<bool> testEndpoint(String baseUrl, {int timeoutMs = 2500}) async {
     try {
       var clean = baseUrl.trim();
       if (clean.endsWith('/')) {
         clean = clean.substring(0, clean.length - 1);
       }
       final uri = Uri.parse('$clean/api/info');
-      final res = await http.get(uri).timeout(const Duration(milliseconds: 2500));
+      final res = await http.get(uri).timeout(Duration(milliseconds: timeoutMs));
       return res.statusCode == 200;
     } catch (_) {
       return false;

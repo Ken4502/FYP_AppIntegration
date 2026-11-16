@@ -1,25 +1,36 @@
 """
 FYP CoreTech: One-Click Master Launcher
 ========================================
-Launches both FloraNet-250 (Port 8000) and PhytoCare Ultra (Port 8001)
+Launches both FloraNet-261 (Port 8000) and PhytoCare Ultra (Port 8001)
 concurrently with automatic health checks, Git LFS verification,
-and automatic browser opening.
+optional Cloudflare HTTPS public tunnel, and automatic browser opening.
 
 Usage:
-    python launch.py                  # Launch Flagship AI models (Recommended)
+    python launch.py                  # Launch Flagship AI models locally
+    python launch.py --tunnel         # Launch with free Cloudflare HTTPS Tunnel (Worldwide Mobile)
     python launch.py --mode baseline  # Launch MobileNetV3 baseline models
     python launch.py --no-browser     # Launch without opening browser tabs
 """
 
 import sys
 import os
+import re
+import json
 import time
 import signal
+import socket
+import shutil
 import argparse
 import subprocess
 import webbrowser
+import threading
 import urllib.request
 from pathlib import Path
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(line_buffering=True, encoding="utf-8")
 
 ROOT_DIR = Path(__file__).resolve().parent
 
@@ -35,6 +46,114 @@ BANNER = r"""
                                   |___/|_|                           
 =============================================================================
 """
+
+DISCOVERY_TOPIC = "urbangreen_coretech_ai_discovery"
+
+def publish_discovery_payload(tunnel_url: str | None, local_ip: str, port: int = 8001) -> bool:
+    """Publishes active server URL to cloud discovery topic for automatic mobile discovery."""
+    data = {
+        "tunnel_url": tunnel_url,
+        "local_url": f"http://{local_ip}:{port}",
+        "local_ip": local_ip,
+        "port": port,
+        "timestamp": int(time.time()),
+        "status": "online"
+    }
+    payload = json.dumps(data).encode("utf-8")
+    try:
+        req = urllib.request.Request(
+            f"https://ntfy.sh/{DISCOVERY_TOPIC}",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Title": "CoreTech AI Online Beacon"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+def start_discovery_beacon(tunnel_url: str | None, local_ip: str, port: int = 8001):
+    """Starts background heartbeat publisher and UDP LAN beacon listener."""
+    # 1. Initial cloud publish
+    publish_discovery_payload(tunnel_url, local_ip, port)
+
+    stop_event = threading.Event()
+
+    # 2. Heartbeat thread (re-publishes every 3 minutes)
+    def heartbeat_loop():
+        while not stop_event.is_set():
+            time.sleep(180)
+            if stop_event.is_set():
+                break
+            publish_discovery_payload(tunnel_url, local_ip, port)
+
+    t_heartbeat = threading.Thread(target=heartbeat_loop, daemon=True)
+    t_heartbeat.start()
+
+    # 3. Local LAN UDP Beacon thread (Port 8002)
+    def udp_beacon_loop():
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("0.0.0.0", 8002))
+            sock.settimeout(1.0)
+            while not stop_event.is_set():
+                try:
+                    data, addr = sock.recvfrom(1024)
+                    msg = data.decode("utf-8", errors="ignore")
+                    if "URBANGREEN_DISCOVERY_PING" in msg or "DISCOVER_AI_SERVER" in msg:
+                        resp_data = json.dumps({
+                            "status": "online",
+                            "tunnel_url": tunnel_url,
+                            "local_url": f"http://{local_ip}:{port}",
+                            "local_ip": local_ip,
+                            "port": port,
+                            "timestamp": int(time.time())
+                        }).encode("utf-8")
+                        sock.sendto(resp_data, addr)
+                except socket.timeout:
+                    continue
+                except Exception:
+                    pass
+            try:
+                sock.close()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    t_udp = threading.Thread(target=udp_beacon_loop, daemon=True)
+    t_udp.start()
+
+    return stop_event
+
+def get_local_ip() -> str:
+    """Detects active local Wi-Fi / LAN IP address."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+def find_cloudflared() -> Path:
+    """Finds portable or system-installed cloudflared binary."""
+    candidates = [
+        ROOT_DIR / "bin" / "cloudflared.exe",
+        ROOT_DIR.parent / "AppIntegration" / "tools" / "cloudflared.exe",
+        ROOT_DIR / "cloudflared.exe"
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    which_p = shutil.which("cloudflared")
+    if which_p:
+        return Path(which_p)
+    return None
 
 def verify_git_lfs():
     """Checks if critical model weights are Git LFS pointers (<10KB) and auto-pulls them."""
@@ -73,7 +192,9 @@ def wait_for_port(port: int, name: str, timeout: int = 40) -> bool:
 def main():
     parser = argparse.ArgumentParser(description="FYP CoreTech One-Click Multi-Service Launcher")
     parser.add_argument("--mode", choices=["flagship", "baseline"], default="flagship",
-                        help="Choose 'flagship' (250-species + 31-disease ConvNeXt) or 'baseline' (MobileNetV3)")
+                        help="Choose 'flagship' (261-species + 31-disease ConvNeXt) or 'baseline' (MobileNetV3)")
+    parser.add_argument("--tunnel", "--online", action="store_true",
+                        help="Start Cloudflare HTTPS public tunnel for free mobile access anywhere")
     parser.add_argument("--no-browser", action="store_true", help="Do not automatically open browser tabs")
     args = parser.parse_args()
 
@@ -81,11 +202,12 @@ def main():
     verify_git_lfs()
 
     python_exe = sys.executable
+    local_ip = get_local_ip()
 
     if args.mode == "flagship":
         id_script = ROOT_DIR / "Plant_Identification_Experiment" / "run_web.py"
         disease_script = ROOT_DIR / "Plant_Disease_Experiment" / "run_web.py"
-        id_title = "FloraNet-250 (ConvNeXt-Swin Ensemble — 250 Species)"
+        id_title = "FloraNet-261 (ConvNeXt-Small + SEA Expansion — 261 Species)"
         disease_title = "PhytoCare Ultra v5.0 (31 Classes + 500-Test Arena)"
     else:
         id_script = ROOT_DIR / "Plant_Identification" / "app" / "main.py"
@@ -94,21 +216,32 @@ def main():
         disease_title = "PhytoCare Baseline (MobileNetV3 — 16 Classes)"
 
     print(f"[*] Mode: {args.mode.upper()}")
+    print(f"[*] Local Network IP: {local_ip}")
     print(f"[*] Starting Service 1: {id_title} on Port 8000...")
     p1 = subprocess.Popen([python_exe, str(id_script)], cwd=str(id_script.parent))
 
     print(f"[*] Starting Service 2: {disease_title} on Port 8001...")
     p2 = subprocess.Popen([python_exe, str(disease_script)], cwd=str(disease_script.parent))
 
+    p_tunnel = None
+    tunnel_url = None
+    discovery_stop_event = None
+
     # Graceful shutdown handler
     def cleanup(signum=None, frame=None):
-        print("\n\n[*] Shutting down services cleanly...")
-        for p in (p1, p2):
-            try:
-                p.terminate()
-                p.wait(timeout=3)
-            except Exception:
-                p.kill()
+        print("\n\n[*] Shutting down all services cleanly...")
+        if discovery_stop_event is not None:
+            discovery_stop_event.set()
+        for p in (p1, p2, p_tunnel):
+            if p is not None:
+                try:
+                    p.terminate()
+                    p.wait(timeout=3)
+                except Exception:
+                    try:
+                        p.kill()
+                    except Exception:
+                        pass
         print("[✓] All services stopped. Goodbye!")
         sys.exit(0)
 
@@ -119,21 +252,77 @@ def main():
     id_ok = wait_for_port(8000, "Species Identification")
     disease_ok = wait_for_port(8001, "Disease Diagnosis")
 
-    print("\n" + "="*75)
+    # Start Cloudflare Tunnel if requested
+    if args.tunnel:
+        cf_bin = find_cloudflared()
+        if cf_bin is None:
+            print("[!] cloudflared.exe was not found. Tunnel cannot be started.")
+        else:
+            print(f"[*] Initializing Cloudflare Secure Tunnel using {cf_bin.name}...")
+            cf_cmd = [str(cf_bin), "tunnel", "--url", "http://127.0.0.1:8001"]
+            p_tunnel = subprocess.Popen(
+                cf_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1
+            )
+            url_pattern = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
+            start_t = time.time()
+            for line in iter(p_tunnel.stdout.readline, ""):
+                m = url_pattern.search(line)
+                if m:
+                    tunnel_url = m.group(0)
+                    break
+                if time.time() - start_t > 25:
+                    break
+
+    # Write active URLs to target files for local access and tools
+    target_files = [
+        ROOT_DIR / "cloud_ai_url.txt",
+        ROOT_DIR.parent / "cloud_ai_url.txt",
+        ROOT_DIR.parent / "AppIntegration" / "cloud_ai_url.txt",
+        ROOT_DIR.parent / "AppIntegration" / "active_server_url.txt"
+    ]
+    active_address = (tunnel_url if tunnel_url else f"http://{local_ip}:8001").strip()
+    for tf in target_files:
+        try:
+            tf.parent.mkdir(parents=True, exist_ok=True)
+            with open(tf, "w", encoding="utf-8") as f:
+                f.write(active_address + "\n")
+        except Exception:
+            pass
+
+    # Start Dynamic Discovery Beacons (Cloud ntfy topic + Local UDP beacon)
+    discovery_stop_event = start_discovery_beacon(tunnel_url, local_ip, 8001)
+
+    print("\n" + "="*78)
     print(" 🌿 FYP CORETECH AI SERVICES ACTIVE & READY")
-    print("="*75)
-    print(f"  • [Port 8000] Species Identification : http://localhost:8000  ({'ONLINE' if id_ok else 'STARTING'})")
-    print(f"  • [Port 8001] Disease & Treatment     : http://localhost:8001  ({'ONLINE' if disease_ok else 'STARTING'})")
-    if args.mode == "flagship":
-        print(f"  • [Port 8001] 500-Specimen Arena     : http://localhost:8001/benchmark")
-    print("="*75)
-    print("  Press Ctrl+C at any time in this window to stop both servers.")
-    print("="*75 + "\n")
+    print("="*78)
+    print(f"  • Localhost (This PC) : http://localhost:8000  (FloraNet-261)")
+    print(f"  • Localhost (This PC) : http://localhost:8001  (PhytoCare Ultra)")
+    print(f"  • Local Wi-Fi (Phone) : http://{local_ip}:8001  (PhytoCare Mobile API)")
+    if tunnel_url:
+        print("-" * 78)
+        print("  🌐 CLOUDFLARE PUBLIC HTTPS TUNNEL (WORLDWIDE FREE MOBILE ACCESS):")
+        print(f"  • Public HTTPS URL    : {tunnel_url}")
+        print(f"  • Mobile API Endpoint : {tunnel_url}/api/predict")
+    print("-" * 78)
+    print("  🚀 ZERO-MANUAL CONFIGURATION: DYNAMIC AUTO-DISCOVERY ACTIVE")
+    print("  • The UrbanGreen mobile app discovers and connects to this server automatically!")
+    print(f"  • Cloud Discovery Channel : https://ntfy.sh/{DISCOVERY_TOPIC}")
+    print(f"  • Local LAN Beacon        : Port 8002 (UDP Broadcast)")
+    print("  • You do NOT need to manually copy or paste any links into the app.")
+    print("="*78)
+    print("  Press Ctrl+C at any time in this window to stop all services.")
+    print("="*78 + "\n")
 
     if not args.no_browser:
         time.sleep(1.0)
         webbrowser.open("http://localhost:8000")
         webbrowser.open("http://localhost:8001")
+        if tunnel_url:
+            webbrowser.open(tunnel_url)
 
     # Monitor running processes
     try:
@@ -145,9 +334,10 @@ def main():
             if p2.poll() is not None:
                 print(f"[!] Service 2 (Port 8001) exited unexpectedly with code {p2.returncode}")
                 cleanup()
+            if p_tunnel is not None and p_tunnel.poll() is not None:
+                print(f"[!] Cloudflare tunnel closed unexpectedly with code {p_tunnel.returncode}")
     except KeyboardInterrupt:
         cleanup()
 
 if __name__ == "__main__":
     main()
-
