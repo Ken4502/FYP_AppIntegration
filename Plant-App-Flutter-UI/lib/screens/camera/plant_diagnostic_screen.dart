@@ -15,7 +15,7 @@ import 'package:urbangreen/screens/shop/cart_screen.dart';
 import 'package:urbangreen/services/achievement_service.dart';
 
 
-class PlantDiagnosticScreen extends StatelessWidget {
+class PlantDiagnosticScreen extends StatefulWidget {
   final XFile? image;
   final PlantDiagnosisResponse? diagnosis;
 
@@ -26,11 +26,24 @@ class PlantDiagnosticScreen extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    if (diagnosis != null) {
+  State<PlantDiagnosticScreen> createState() => _PlantDiagnosticScreenState();
+}
+
+class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
+  int _cardQuarterTurns = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.diagnosis != null) {
       AchievementService().recordDiagnosticScan();
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final diagnosis = widget.diagnosis;
 
     // Fallback default values if screen opened without live scan
     final isHealthy = diagnosis?.diagnosis.isHealthy ?? true;
@@ -117,13 +130,8 @@ class PlantDiagnosticScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            // Visual Inspection / Annotated Lesion Preview
-            Center(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: _buildVisualPreview(spots?.annotatedImageBase64),
-              ),
-            ),
+            // Visual Inspection / Annotated Lesion Preview (Tap to zoom & 90° rotation)
+            _buildInteractiveCardPreview(spots?.annotatedImageBase64),
             const SizedBox(height: 16),
 
             // Non-Plant Notice Banner (if applicable)
@@ -428,6 +436,156 @@ class PlantDiagnosticScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildInteractiveCardPreview(String? base64Str) {
+    return Center(
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 15,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Stack(
+            children: [
+              // Tappable main image
+              InkWell(
+                onTap: () => _openFullScreenPreview(base64Str),
+                child: RotatedBox(
+                  quarterTurns: _cardQuarterTurns,
+                  child: _buildVisualPreview(base64Str),
+                ),
+              ),
+
+              // Top-Right: Quick 90° Rotate Button
+              Positioned(
+                top: 10,
+                right: 10,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      setState(() {
+                        _cardQuarterTurns = (_cardQuarterTurns + 1) % 4;
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 0.8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.rotate_right_rounded, color: Colors.white, size: 16),
+                          SizedBox(width: 4),
+                          Text(
+                            "Rotate 90°",
+                            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Bottom-Center: Tap to zoom & inspect banner
+              Positioned(
+                bottom: 12,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => _openFullScreenPreview(base64Str),
+                      borderRadius: BorderRadius.circular(24),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.70),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.35), width: 0.8),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.zoom_in_rounded, color: Colors.white, size: 17),
+                            SizedBox(width: 6),
+                            Text(
+                              "Tap to zoom & inspect image",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openFullScreenPreview(String? base64Str) async {
+    Uint8List? bytes;
+    if (base64Str != null && base64Str.isNotEmpty) {
+      try {
+        final cleanB64 = base64Str.contains(',')
+            ? base64Str.split(',')[1]
+            : base64Str;
+        bytes = base64Decode(cleanB64);
+      } catch (_) {}
+    }
+
+    final File? file = widget.image != null ? File(widget.image!.path) : null;
+    final plantName = widget.diagnosis?.species.name.replaceAll('_', ' ') ?? "Plant Specimen";
+    final conditionName = widget.diagnosis?.diagnosis.conditionName.replaceAll('_', ' ') ?? "Pathology Diagnostics";
+
+    final updatedTurns = await Navigator.of(context).push<int>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (context) => DiagnosticFullScreenImageViewer(
+          imageBytes: bytes,
+          imageFile: file,
+          plantName: plantName,
+          conditionName: conditionName,
+          initialQuarterTurns: _cardQuarterTurns,
+        ),
+      ),
+    );
+
+    if (updatedTurns != null && mounted) {
+      setState(() {
+        _cardQuarterTurns = updatedTurns;
+      });
+    }
+  }
+
   Widget _buildVisualPreview(String? base64Str) {
     if (base64Str != null && base64Str.isNotEmpty) {
       try {
@@ -444,9 +602,9 @@ class PlantDiagnosticScreen extends StatelessWidget {
       } catch (_) {}
     }
 
-    if (image != null) {
+    if (widget.image != null) {
       return Image.file(
-        File(image!.path),
+        File(widget.image!.path),
         height: 250,
         width: double.infinity,
         fit: BoxFit.cover,
@@ -864,5 +1022,259 @@ class PlantDiagnosticScreen extends StatelessWidget {
       ),
     );
   }
+}
 
+/// Full-screen high-resolution zoomable viewer for Pathology Diagnostics.
+/// Features:
+///   1. Smooth pinch-to-zoom & pan via InteractiveViewer (up to 6×)
+///   2. Double-tap to zoom in / reset
+///   3. Prominent 'X' exit button
+///   4. Interactive 90° rotation controls
+///   5. Reset orientation & zoom controls
+class DiagnosticFullScreenImageViewer extends StatefulWidget {
+  final Uint8List? imageBytes;
+  final File? imageFile;
+  final String plantName;
+  final String conditionName;
+  final int initialQuarterTurns;
+
+  const DiagnosticFullScreenImageViewer({
+    super.key,
+    this.imageBytes,
+    this.imageFile,
+    required this.plantName,
+    required this.conditionName,
+    this.initialQuarterTurns = 0,
+  });
+
+  @override
+  State<DiagnosticFullScreenImageViewer> createState() =>
+      _DiagnosticFullScreenImageViewerState();
+}
+
+class _DiagnosticFullScreenImageViewerState
+    extends State<DiagnosticFullScreenImageViewer> {
+  late TransformationController _transformationController;
+  late int _quarterTurns;
+  Offset? _doubleTapPosition;
+
+  @override
+  void initState() {
+    super.initState();
+    _transformationController = TransformationController();
+    _quarterTurns = widget.initialQuarterTurns;
+  }
+
+  @override
+  void dispose() {
+    _transformationController.dispose();
+    super.dispose();
+  }
+
+  void _handleDoubleTap() {
+    if (_transformationController.value != Matrix4.identity()) {
+      _transformationController.value = Matrix4.identity();
+    } else {
+      final pos = _doubleTapPosition ?? Offset.zero;
+      final Matrix4 matrix = Matrix4.identity();
+      matrix.setEntry(0, 3, -pos.dx * 1.5);
+      matrix.setEntry(1, 3, -pos.dy * 1.5);
+      matrix.setEntry(0, 0, 2.5);
+      matrix.setEntry(1, 1, 2.5);
+      _transformationController.value = matrix;
+    }
+  }
+
+  void _rotate() {
+    setState(() {
+      _quarterTurns = (_quarterTurns + 1) % 4;
+    });
+  }
+
+  void _reset() {
+    setState(() {
+      _transformationController.value = Matrix4.identity();
+      _quarterTurns = 0;
+    });
+  }
+
+  Widget _buildImage() {
+    if (widget.imageBytes != null && widget.imageBytes!.isNotEmpty) {
+      return Image.memory(
+        widget.imageBytes!,
+        fit: BoxFit.contain,
+      );
+    }
+
+    if (widget.imageFile != null) {
+      return Image.file(
+        widget.imageFile!,
+        fit: BoxFit.contain,
+      );
+    }
+
+    return Image.asset(
+      'assets/images/image_1.png',
+      fit: BoxFit.contain,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // Center Zoomable & Pannable Image Area
+            Positioned.fill(
+              child: GestureDetector(
+                onDoubleTapDown: (details) => _doubleTapPosition = details.localPosition,
+                onDoubleTap: _handleDoubleTap,
+                child: InteractiveViewer(
+                  transformationController: _transformationController,
+                  clipBehavior: Clip.none,
+                  minScale: 0.5,
+                  maxScale: 6.0,
+                  boundaryMargin: const EdgeInsets.all(40),
+                  child: Center(
+                    child: RotatedBox(
+                      quarterTurns: _quarterTurns,
+                      child: _buildImage(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Top Control Bar with 'X' Exit Button & Controls
+            Positioned(
+              top: 12,
+              left: 14,
+              right: 14,
+              child: Row(
+                children: [
+                  // Prominent 'X' Close Button
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => Navigator.of(context).pop(_quarterTurns),
+                      borderRadius: BorderRadius.circular(22),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.65),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
+                        ),
+                        child: const Icon(Icons.close_rounded, color: Colors.white, size: 24),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Title and Subtitle
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          widget.conditionName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          widget.plantName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Rotate Button
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _rotate,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.65),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
+                        ),
+                        child: const Icon(Icons.rotate_right_rounded, color: Colors.white, size: 22),
+                      ),
+                    ),
+                  ),
+                  // Reset Button
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _reset,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.65),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
+                        ),
+                        child: const Icon(Icons.restart_alt_rounded, color: Colors.white, size: 22),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Bottom Floating Instruction Pill
+            Positioned(
+              bottom: 18,
+              left: 20,
+              right: 20,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.75),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 0.8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.pinch_rounded, color: Colors.white70, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        _quarterTurns != 0
+                            ? "Pinch / double-tap to zoom • Rotated ${_quarterTurns * 90}°"
+                            : "Pinch or double-tap to zoom • Drag to pan",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
