@@ -41,12 +41,12 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Flutter SDK (Stable Channel)
+      - name: Set up Flutter SDK (3.41.4 Stable)
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.41.4'
           channel: 'stable'
           cache: true
-          cache-key: "flutter-:os:-:channel:-:version:-:arch:-:hash:"
 
       - name: Verify Flutter & Dart Environment
         run: |
@@ -129,12 +129,12 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Flutter SDK (Stable Channel)
+      - name: Set up Flutter SDK (3.41.4 Stable)
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.41.4'
           channel: 'stable'
           cache: true
-          cache-key: "flutter-:os:-:channel:-:version:-:arch:-:hash:"
 
       - name: Install Flutter Dependencies
         run: |
@@ -142,7 +142,7 @@ jobs:
 
       - name: Build Android Debug APK
         run: |
-          flutter build apk --debug --android-skip-build-dependency-validation
+          flutter build apk --debug
 
       - name: Prepare Named Build Artifacts
         run: |
