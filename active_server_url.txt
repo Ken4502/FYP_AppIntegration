@@ -1,1 +1,1 @@
-http://192.168.1.4:8001
+https://pure-mary-edge-elected.trycloudflare.com
