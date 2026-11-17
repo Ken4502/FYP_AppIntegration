@@ -251,25 +251,27 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
       _pingResult = null;
     });
 
-    final targetIp = _service.savedStationIp ?? _service.targetDeviceIp;
-    final res = await _service.testHardwarePing(targetIp);
+    final sw = Stopwatch()..start();
+    final dev = await _firestoreService.getDevice(widget.device.id);
+    sw.stop();
 
     if (mounted) {
+      final isOnline = dev != null && dev.isOnline;
       setState(() {
         _isTestingPing = false;
-        if (res.isSuccess) {
-          final isCloud = res.data?['isCloud'] == true;
-          final ms = res.data?['latencyMs'] ?? 25;
-          _pingResult = isCloud ? 'Cloud Online (${ms}ms)' : 'Local Online (${ms}ms)';
+        if (isOnline) {
+          _pingResult = 'Cloud Firestore Online (${sw.elapsedMilliseconds}ms)';
         } else {
-          _pingResult = 'Offline / Unreachable';
+          _pingResult = 'Offline (Heartbeat timed out)';
         }
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(res.message),
-          backgroundColor: res.isSuccess ? kStatusSuccess : kStatusDanger,
+          content: Text(isOnline
+              ? '✅ Device heartbeat verified in Cloud Firestore (${sw.elapsedMilliseconds}ms).'
+              : '⚠️ Device is offline or has not checked in for > 2 minutes.'),
+          backgroundColor: isOnline ? kStatusSuccess : kStatusWarning,
           duration: const Duration(seconds: 4),
         ),
       );
@@ -278,16 +280,19 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
 
   Future<void> _sendTestNotification() async {
     setState(() => _isTestingNotification = true);
-    final res = await _service.testConnectionAndNotify(
-      customMessage: 'Device Alert: ${widget.device.name} test signal received!',
+    await _firestoreService.addDeviceLog(
+      widget.device.id,
+      title: 'Diagnostic Test Alert',
+      detail: 'Manual diagnostic signal dispatched to Cloud Firestore.',
+      type: IotLogType.notifying,
     );
 
     if (mounted) {
       setState(() => _isTestingNotification = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(res.message),
-          backgroundColor: res.isSuccess ? kStatusSuccess : kStatusDanger,
+        const SnackBar(
+          content: Text('✅ Diagnostic notification logged to Cloud Firestore.'),
+          backgroundColor: kStatusSuccess,
         ),
       );
     }
@@ -299,7 +304,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
       builder: (ctx) => AlertDialog(
         title: const Text('Unpair IoT Device?'),
         content: Text(
-          'Are you sure you want to remove "${widget.device.name}" from this phone? This phone will no longer act as the main host for alerts.',
+          'Are you sure you want to remove "${widget.device.name}" from your Cloud Firestore account and unbind it from any linked botanical specimen?',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -313,10 +318,11 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     );
 
     if (confirm == true && mounted) {
-      await _service.unregisterDevice();
+      await _firestoreService.deleteDevice(widget.device.id);
+      _plantService.unassignDevice(widget.device.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Device unpaired successfully.')),
+          const SnackBar(content: Text('Device unpaired successfully from Cloud Firestore.')),
         );
         Navigator.pop(context, true);
       }
@@ -326,21 +332,18 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   Future<void> _reconfigureWifi() async {
     final updated = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => const IotSetupWizardScreen()),
+      MaterialPageRoute(
+        builder: (_) => IotSetupWizardScreen(initialDeviceId: widget.device.id),
+      ),
     );
     if (updated == true && mounted) {
-      final dev = _service.connectedIotDevices.firstWhere(
-        (d) => d.id == widget.device.id,
-        orElse: () => widget.device,
-      );
-      setState(() {
-        widget.device.isWifiConnected = dev.isWifiConnected;
-        widget.device.wifiSsid = dev.wifiSsid;
-      });
-      if (!widget.device.isWifiConnected) {
-        // If Wi-Fi was deleted, navigate back to main IoT page as requested
-        Navigator.pop(context, true);
-        return;
+      final dev = await _firestoreService.getDevice(widget.device.id);
+      if (dev != null && mounted) {
+        setState(() {
+          widget.device.isWifiConnected = dev.isWifiConnected;
+          widget.device.wifiSsid = dev.wifiSsid;
+          widget.device.lastSeen = dev.lastSeen;
+        });
       }
       _startPolling();
     }
@@ -539,31 +542,30 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     final bool targetAuto = (newMode == 'AUTO');
     if (_mode == newMode && widget.device.autoWaterEnabled == targetAuto) return;
 
-    final res = await _service.setWateringMode(targetAuto);
+    await _firestoreService.setWateringMode(widget.device.id, autoWaterEnabled: targetAuto);
     if (mounted) {
       setState(() {
         _mode = newMode;
         widget.device.autoWaterEnabled = targetAuto;
       });
-      _service.persistDevices();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(res.message.isNotEmpty
-              ? res.message
-              : 'Switched to ${targetAuto ? "Automatic Watering" : "Manual Decision"} mode.'),
-          backgroundColor: res.isSuccess ? kPrimaryColor : Colors.orange.shade800,
+          content: Text(
+            'Switched to ${targetAuto ? "Automatic Watering" : "Manual Decision"} mode via Cloud Firestore.',
+          ),
+          backgroundColor: kPrimaryColor,
         ),
       );
     }
   }
 
   Future<void> _triggerWaterPulse() async {
-    final res = await _service.pulseWaterSeconds(3);
+    await _firestoreService.triggerManualPulse(widget.device.id, durationSeconds: 3);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(res.message),
-          backgroundColor: res.isSuccess ? kStatusSuccess : kStatusDanger,
+        const SnackBar(
+          content: Text('💧 Quick water pulse (3s) dispatched to Cloud Firestore.'),
+          backgroundColor: kStatusSuccess,
         ),
       );
     }
@@ -571,15 +573,19 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
 
   Future<void> _togglePumpState() async {
     final nextState = !_isPumpRunning;
-    final res = await _service.setPumpState(nextState);
+    await _firestoreService.setPumpState(widget.device.id, nextState);
     if (mounted) {
       setState(() {
         _isPumpRunning = nextState;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(res.message),
-          backgroundColor: res.isSuccess ? kStatusSuccess : kStatusDanger,
+          content: Text(
+            nextState
+                ? 'Emergency pump activated via Cloud Firestore.'
+                : 'Emergency pump stopped via Cloud Firestore.',
+          ),
+          backgroundColor: kStatusSuccess,
         ),
       );
     }
@@ -647,12 +653,12 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
-                                    color: _service.isRealHardwareConnected
+                                    color: _isConnected
                                         ? kStatusSuccess.withValues(alpha: 0.12)
                                         : kStatusWarning.withValues(alpha: 0.12),
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
-                                      color: _service.isRealHardwareConnected
+                                      color: _isConnected
                                           ? kStatusSuccess.withValues(alpha: 0.3)
                                           : kStatusWarning.withValues(alpha: 0.3),
                                     ),
@@ -665,16 +671,16 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                                         height: 6,
                                         decoration: BoxDecoration(
                                           shape: BoxShape.circle,
-                                          color: _service.isRealHardwareConnected ? kStatusSuccess : kStatusWarning,
+                                          color: _isConnected ? kStatusSuccess : kStatusWarning,
                                         ),
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
-                                        _service.isRealHardwareConnected ? 'LIVE' : 'Wi-Fi',
+                                        _isConnected ? 'ONLINE' : 'STANDBY',
                                         style: TextStyle(
                                           fontSize: 10,
                                           fontWeight: FontWeight.bold,
-                                          color: _service.isRealHardwareConnected ? kStatusSuccess : const Color(0xFFB45309),
+                                          color: _isConnected ? kStatusSuccess : const Color(0xFFB45309),
                                         ),
                                       ),
                                     ],
@@ -1757,7 +1763,11 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                         setState(() {
                           dev.lowMoistureThreshold = val;
                         });
-                        _service.persistDevices();
+                        _firestoreService.updateThresholds(
+                          widget.device.id,
+                          lowThreshold: val,
+                          highThreshold: dev.highMoistureThreshold,
+                        );
                       }
                     },
                   );

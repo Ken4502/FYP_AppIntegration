@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
 import '../../constants.dart';
 import '../../models/iot_device_model.dart';
+import '../../services/iot_firestore_service.dart';
 import '../../services/iot_hybrid_connectivity_service.dart';
 import 'iot_details_screen.dart';
 
 class IotActivityLogsScreen extends StatefulWidget {
   final VoidCallback? onBackToSetup;
+  final String? deviceId;
 
-  const IotActivityLogsScreen({super.key, this.onBackToSetup});
+  const IotActivityLogsScreen({super.key, this.onBackToSetup, this.deviceId});
 
   @override
   State<IotActivityLogsScreen> createState() => _IotActivityLogsScreenState();
 }
 
 class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
+  final IotFirestoreService _firestoreService = IotFirestoreService();
   final IotHybridConnectivityService _service = IotHybridConnectivityService();
   IotLogType? _selectedCategory; // null = all
   String? _selectedDeviceId; // null = all IoT devices
@@ -21,6 +24,14 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
   String _searchQuery = '';
   bool _isSearchOpen = false;
   final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.deviceId != null && widget.deviceId!.isNotEmpty) {
+      _selectedDeviceId = widget.deviceId;
+    }
+  }
 
   @override
   void dispose() {
@@ -42,31 +53,6 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
     final m = dt.minute.toString().padLeft(2, '0');
     final s = dt.second.toString().padLeft(2, '0');
     return '$h:$m:$s';
-  }
-
-  List<Map<String, String>> _extractKnownDevices(List<IotActivityLog> logs) {
-    final Map<String, String> deviceMap = {};
-
-    // 1. Devices registered in the service
-    for (final dev in _service.connectedIotDevices) {
-      if (dev.id.isNotEmpty) {
-        deviceMap[dev.id] = dev.name;
-      }
-    }
-
-    // 2. Active registered host device
-    if (_service.registeredDeviceId.isNotEmpty) {
-      deviceMap[_service.registeredDeviceId] = _service.registeredDeviceName;
-    }
-
-    // 3. Any device IDs found in the activity logs
-    for (final log in logs) {
-      if (log.deviceId.isNotEmpty && !deviceMap.containsKey(log.deviceId)) {
-        deviceMap[log.deviceId] = log.deviceName;
-      }
-    }
-
-    return deviceMap.entries.map((e) => {'id': e.key, 'name': e.value}).toList();
   }
 
   List<IotActivityLog> _filterLogs(List<IotActivityLog> allLogs) {
@@ -102,38 +88,52 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
     return Scaffold(
       backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       body: SafeArea(
-        child: ValueListenableBuilder<List<IotActivityLog>>(
-          valueListenable: _service.activityLogsNotifier,
-          builder: (context, allLogs, _) {
-            final knownDevices = _extractKnownDevices(allLogs);
-            final filteredLogs = _filterLogs(allLogs);
+        child: StreamBuilder<List<IotDevice>>(
+          stream: _firestoreService.streamUserDevices(),
+          builder: (context, devSnap) {
+            final userDevices = devSnap.data ?? [];
+            final List<Map<String, String>> knownDevices = userDevices.map((d) => {'id': d.id, 'name': d.name}).toList();
 
-            return Column(
-              children: [
-                // Search Bar (if opened)
-                if (_isSearchOpen) _buildSearchBar(),
+            final String? activeDeviceId = _selectedDeviceId ?? (userDevices.isNotEmpty ? userDevices.first.id : null);
 
-                // Device Filter Selector Row (All Devices vs Specific IoT)
-                _buildDeviceFilterRow(knownDevices),
+            if (activeDeviceId == null) {
+              return _buildEmptyState(noDevice: true);
+            }
 
-                // Category Filter Chips
-                _buildCategoryFilterChips(),
+            return StreamBuilder<List<IotActivityLog>>(
+              stream: _firestoreService.streamDeviceLogs(activeDeviceId),
+              builder: (context, logSnap) {
+                final allLogs = logSnap.data ?? [];
+                final filteredLogs = _filterLogs(allLogs);
 
-                // Header with Count and Permanent Audit Badge (no delete/clear!)
-                _buildHeaderRow(filteredLogs.length),
+                return Column(
+                  children: [
+                    // Search Bar (if opened)
+                    if (_isSearchOpen) _buildSearchBar(),
 
-                // List of Activity Logs
-                Expanded(
-                  child: filteredLogs.isEmpty
-                      ? _buildEmptyState()
-                      : ListView.separated(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          itemCount: filteredLogs.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 10),
-                          itemBuilder: (ctx, idx) => _buildLogCard(filteredLogs[idx]),
-                        ),
-                ),
-              ],
+                    // Device Filter Selector Row (All Devices vs Specific IoT)
+                    _buildDeviceFilterRow(knownDevices),
+
+                    // Category Filter Chips
+                    _buildCategoryFilterChips(),
+
+                    // Header with Count and Permanent Audit Badge (no delete/clear!)
+                    _buildHeaderRow(filteredLogs.length),
+
+                    // List of Activity Logs
+                    Expanded(
+                      child: filteredLogs.isEmpty
+                          ? _buildEmptyState()
+                          : ListView.separated(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              itemCount: filteredLogs.length,
+                              separatorBuilder: (_, __) => const SizedBox(height: 10),
+                              itemBuilder: (ctx, idx) => _buildLogCard(filteredLogs[idx], userDevices),
+                            ),
+                    ),
+                  ],
+                );
+              },
             );
           },
         ),
@@ -455,7 +455,7 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
     );
   }
 
-  Widget _buildLogCard(IotActivityLog log) {
+  Widget _buildLogCard(IotActivityLog log, [List<IotDevice>? userDevices]) {
     final clock = _formatClock(log.timestamp);
     final relative = _formatRelativeTime(log.timestamp);
     final isSelectedDevice = _selectedDeviceId == log.deviceId;
@@ -465,7 +465,7 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => _showLogDetailModal(log),
+        onTap: () => _showLogDetailModal(log, userDevices),
         borderRadius: BorderRadius.circular(14),
         child: Container(
           padding: const EdgeInsets.all(13),
@@ -673,7 +673,7 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
     );
   }
 
-  void _showLogDetailModal(IotActivityLog log) {
+  void _showLogDetailModal(IotActivityLog log, [List<IotDevice>? userDevices]) {
     final isDark = context.isDarkMode;
     final fullDate =
         '${log.timestamp.year}-${log.timestamp.month.toString().padLeft(2, '0')}-${log.timestamp.day.toString().padLeft(2, '0')} at ${_formatClock(log.timestamp)}';
@@ -953,21 +953,25 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
                 ),
                 icon: const Icon(Icons.tune_rounded, size: 18, color: kPrimaryColor),
                 label: const Text('Open IoT Configuration & Sensors', style: TextStyle(fontWeight: FontWeight.bold)),
-                onPressed: () {
+                onPressed: () async {
                   Navigator.pop(ctx);
-                  final dev = _service.connectedIotDevices.firstWhere(
-                    (d) => d.id == log.deviceId,
-                    orElse: () => IotDevice(
-                      id: log.deviceId,
-                      name: log.deviceName,
-                      wifiSsid: _service.registeredHomeSsid,
-                      isWifiConnected: true,
-                    ),
+                  IotDevice? dev;
+                  if (userDevices != null) {
+                    final matches = userDevices.where((d) => d.id == log.deviceId);
+                    if (matches.isNotEmpty) dev = matches.first;
+                  }
+                  dev ??= await _firestoreService.getDevice(log.deviceId);
+                  dev ??= IotDevice(
+                    id: log.deviceId,
+                    name: log.deviceName,
+                    isWifiConnected: true,
                   );
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => IotDetailsScreen(device: dev)),
-                  );
+                  if (mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => IotDetailsScreen(device: dev!)),
+                    );
+                  }
                 },
               ),
             ],
@@ -977,7 +981,8 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState({bool noDevice = false}) {
+    final isDark = context.isDarkMode;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -994,23 +999,40 @@ class _IotActivityLogsScreenState extends State<IotActivityLogsScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              _selectedDeviceId != null
-                  ? 'No Logs for "${_selectedDeviceName ?? _selectedDeviceId}"'
-                  : (_searchQuery.isNotEmpty ? 'No Matching Logs' : 'No Activity Logs Found'),
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary),
+              noDevice
+                  ? 'No Configured Sensors'
+                  : (_selectedDeviceId != null
+                      ? 'No Logs for "${_selectedDeviceName ?? _selectedDeviceId}"'
+                      : (_searchQuery.isNotEmpty ? 'No Matching Logs' : 'No Activity Logs Found')),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? kDarkTextPrimary : kTextPrimary),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 6),
             Text(
-              _selectedDeviceId != null
-                  ? 'No events match the selected filters for this IoT device.'
-                  : (_searchQuery.isNotEmpty
-                      ? 'No activity entries matched "$_searchQuery".'
-                      : 'Hardware events, watering cycles, sensing updates, and notifications will appear here in real time as they occur.'),
-              style: const TextStyle(fontSize: 12, color: kTextSecondary, height: 1.4),
+              noDevice
+                  ? 'Configure an ESP32 chip using the SoftAP wizard to start logging real-time soil moisture and watering events to Cloud Firestore.'
+                  : (_selectedDeviceId != null
+                      ? 'No events match the selected filters for this IoT device.'
+                      : (_searchQuery.isNotEmpty
+                          ? 'No activity entries matched "$_searchQuery".'
+                          : 'Hardware events, watering cycles, sensing updates, and notifications will appear here in real time as they occur.')),
+              style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary, height: 1.4),
               textAlign: TextAlign.center,
             ),
-            if (_selectedDeviceId != null || _searchQuery.isNotEmpty || _selectedCategory != null) ...[
+            if (noDevice && widget.onBackToSetup != null) ...[
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kPrimaryColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.wifi_tethering_rounded, size: 16),
+                label: const Text('Back to Setup'),
+                onPressed: widget.onBackToSetup,
+              ),
+            ],
+            if (!noDevice && (_selectedDeviceId != null || _searchQuery.isNotEmpty || _selectedCategory != null)) ...[
               const SizedBox(height: 16),
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
