@@ -15,12 +15,19 @@ import urllib.request
 from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent
-CORETECH_DIR = APP_DIR / "CoreTech"
+# Prefer flagship CoreTech root containing CoreTech_v2 if present
+if (APP_DIR.parent / "CoreTech" / "CoreTech_v2").exists():
+    CORETECH_DIR = APP_DIR.parent / "CoreTech"
+else:
+    CORETECH_DIR = APP_DIR / "CoreTech"
+
 TOOLS_DIR = APP_DIR / "tools"
 CLOUDFLARED_EXE = TOOLS_DIR / "cloudflared.exe"
 URL_FILE = APP_DIR / "cloud_ai_url.txt"
 
-VENV_PYTHON = CORETECH_DIR / ".venv" / "Scripts" / "python.exe"
+VENV_PYTHON = APP_DIR / "CoreTech" / ".venv" / "Scripts" / "python.exe"
+if not VENV_PYTHON.exists():
+    VENV_PYTHON = CORETECH_DIR / ".venv" / "Scripts" / "python.exe"
 if not VENV_PYTHON.exists():
     VENV_PYTHON = Path(sys.executable)
 
