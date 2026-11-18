@@ -39,9 +39,41 @@ class IotProvisioningService {
 
   static const String softApIp = '192.168.4.1';
   static const String provisionEndpoint = 'http://$softApIp/provision';
+  static const String statusEndpoint = 'http://$softApIp/status';
+  static const String scanEndpoint = 'http://$softApIp/scan';
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  /// Detect whether the phone is connected to the ESP32 SoftAP hotspot
+  Future<Map<String, dynamic>?> checkHotspotStatus({
+    Duration timeout = const Duration(seconds: 3),
+  }) async {
+    try {
+      final res = await http.get(Uri.parse(statusEndpoint)).timeout(timeout);
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Request the ESP32 to scan for nearby 2.4GHz Wi-Fi networks
+  Future<List<Map<String, dynamic>>> scanWifiNetworks({
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    try {
+      final res = await http.get(Uri.parse(scanEndpoint)).timeout(timeout);
+      if (res.statusCode == 200) {
+        final list = jsonDecode(res.body) as List<dynamic>;
+        final networks = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        // Sort networks by signal strength (RSSI descending)
+        networks.sort((a, b) => ((b['rssi'] as num?) ?? -100).compareTo((a['rssi'] as num?) ?? -100));
+        return networks;
+      }
+    } catch (_) {}
+    return [];
+  }
 
   String generateSetupToken() {
     final random = Random.secure();
@@ -268,9 +300,9 @@ class IotProvisioningService {
     if (!existing.exists) {
       updates.addAll({
         'name': 'Smart Plant Probe',
-        'firmwareVersion': 'v4.0.0-Firestore',
-        'mode': 'AUTO',
-        'autoWaterEnabled': true,
+        'firmwareVersion': 'v4.1.0-StateMachine',
+        'mode': 'MANUAL',
+        'autoWaterEnabled': false, // Watering turned OFF by default!
         'lowThreshold': 25,
         'highThreshold': 45,
         'moisturePercent': 0.0,

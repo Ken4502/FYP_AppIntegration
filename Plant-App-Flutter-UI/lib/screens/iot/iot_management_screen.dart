@@ -643,14 +643,14 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
-                    Icons.settings_input_antenna_rounded,
+                    Icons.sensors_rounded,
                     color: kPrimaryColor,
                     size: 38,
                   ),
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'ESP32 Configuration Required',
+                  'No IoT Sensor Added Yet 🌱',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 18,
@@ -660,7 +660,7 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Before accessing real-time soil moisture monitoring, watering triggers, and botanical telemetry, your ESP32 irrigation chip must be configured to your local 2.4GHz Wi-Fi network.',
+                  'Pair your ESP32 Smart Plant Probe to unlock real-time soil moisture monitoring, plant health telemetry, and automatic watering.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13,
@@ -675,9 +675,9 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () => _openSetupWizard(),
-                    icon: const Icon(Icons.wifi_tethering_rounded, size: 20),
+                    icon: const Icon(Icons.add_circle_outline_rounded, size: 20),
                     label: const Text(
-                      'Configure ESP32 Wi-Fi (SoftAP)',
+                      'Add IoT Device',
                       style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                     ),
                     style: ElevatedButton.styleFrom(
@@ -734,29 +734,22 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                 const SizedBox(height: 14),
                 _buildProcessStep(
                   stepNum: '1',
-                  title: 'Power on ESP32 Probe',
-                  description: 'Connect the ESP32 micro-controller to a 5V USB power source. Its indicator LED will blink.',
+                  title: 'Connect to Setup Hotspot',
+                  description: 'Turn on the ESP32 and connect your phone to "ESP32_Plant_Irrigation". Connection is auto-detected.',
                   isDark: isDark,
                 ),
                 const SizedBox(height: 12),
                 _buildProcessStep(
                   stepNum: '2',
-                  title: 'Input Local Network Credentials',
-                  description: 'Enter your 2.4GHz Home Wi-Fi SSID and password in the isolated setup wizard.',
+                  title: 'Select Wi-Fi from Auto-Scan',
+                  description: 'The ESP32 searches nearby 2.4GHz networks. Simply select yours and enter the password.',
                   isDark: isDark,
                 ),
                 const SizedBox(height: 12),
                 _buildProcessStep(
                   stepNum: '3',
-                  title: 'Connect to Hotspot & Deliver',
-                  description: 'Briefly join the "ESP32_Plant_Irrigation" hotspot. Credentials are transmitted via HTTP POST and saved to chip NVS.',
-                  isDark: isDark,
-                ),
-                const SizedBox(height: 12),
-                _buildProcessStep(
-                  stepNum: '4',
                   title: 'Autonomous Cloud Registration',
-                  description: 'The ESP32 closes its hotspot, joins your home Wi-Fi, and registers in Cloud Firestore. All features unlock automatically!',
+                  description: 'The ESP32 shuts down the hotspot, connects to your router, and registers in Cloud Firestore. (Watering is turned OFF by default for safety).',
                   isDark: isDark,
                   isLast: true,
                 ),
