@@ -15,6 +15,7 @@ import 'low_moisture_decision_screen.dart';
 import 'iot_network_info_screen.dart';
 import 'iot_setup_wizard_screen.dart';
 import '../../components/iot_connection_guide_sheet.dart';
+import '../../components/city_picker_sheet.dart';
 
 class IotDetailsScreen extends StatefulWidget {
   final IotDevice device;
@@ -2314,81 +2315,102 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     final guardBorder = isRainGuard ? const Color(0xFFBFDBFE) : const Color(0xFFBBF7D0);
     final guardTextColor = isRainGuard ? const Color(0xFF1D4ED8) : const Color(0xFF15803D);
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isDark ? kDarkCardColor : kSurfaceColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                weather.weatherIcon,
-                style: const TextStyle(fontSize: 22),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${weather.locationName} • ${weather.weatherCondition}',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                        color: isDark ? kDarkTextPrimary : kTextPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${weather.temperature.toStringAsFixed(1)}°C • ${weather.relativeHumidity}% Humidity • Rain: ${weather.rainAmount}mm (${weather.precipitationProbability}%)',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: isDark ? kDarkTextSecondary : kTextSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.black26 : guardBg,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: guardBorder),
+    return InkWell(
+      onTap: () {
+        CityPickerSheet.show(
+          context,
+          onCitySelected: (loc) async {
+            final newWeather = await _weatherService.selectCity(loc);
+            if (mounted) setState(() => _weatherData = newWeather);
+          },
+        );
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isDark ? kDarkCardColor : kSurfaceColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
             ),
-            child: Row(
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
+                Text(
+                  weather.weatherIcon,
+                  style: const TextStyle(fontSize: 22),
+                ),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
-                    weather.rainGuardMessage,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? (isRainGuard ? Colors.blue.shade200 : Colors.green.shade200) : guardTextColor,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              '${weather.locationName} • ${weather.weatherCondition}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: isDark ? kDarkTextPrimary : kTextPrimary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.edit_location_alt_rounded, size: 14, color: kPrimaryColor),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${weather.temperature.toStringAsFixed(1)}°C • ${weather.relativeHumidity}% Humidity • Rain: ${weather.rainAmount}mm (${weather.precipitationProbability}%)',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? kDarkTextSecondary : kTextSecondary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                const Icon(Icons.keyboard_arrow_right_rounded, size: 18, color: Colors.grey),
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.black26 : guardBg,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: guardBorder),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      weather.rainGuardMessage,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? (isRainGuard ? Colors.blue.shade200 : Colors.green.shade200) : guardTextColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

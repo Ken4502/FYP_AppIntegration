@@ -11,6 +11,7 @@ import 'iot_activity_logs_screen.dart';
 import 'iot_details_screen.dart';
 import 'iot_setup_wizard_screen.dart';
 import '../../components/iot_connection_guide_sheet.dart';
+import '../../components/city_picker_sheet.dart';
 
 /// Central IoT Management Screen
 /// Strictly separates SoftAP Wi-Fi provisioning from operational IoT dashboard.
@@ -907,86 +908,112 @@ class _IotManagementScreenState extends State<IotManagementScreen>
   }
 
   /// Real-Time Local Weather of the User's City with Rain Guard Status
+  void _openCityPicker(BuildContext context) {
+    CityPickerSheet.show(
+      context,
+      onCitySelected: (loc) async {
+        setState(() => _isLoadingWeather = true);
+        final newWeather = await _weatherService.selectCity(loc);
+        if (mounted) {
+          setState(() {
+            _weatherData = newWeather;
+            _isLoadingWeather = false;
+          });
+        }
+      },
+    );
+  }
+
   Widget _buildWeatherSummaryCard(bool isDark) {
     final w = _weatherData;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? kDarkCardColor : kSurfaceColor,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0284C7).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
+    return InkWell(
+      onTap: () => _openCityPicker(context),
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isDark ? kDarkCardColor : kSurfaceColor,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0284C7).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.cloud_queue_rounded, color: Color(0xFF0284C7), size: 22),
                 ),
-                child: const Icon(Icons.cloud_queue_rounded, color: Color(0xFF0284C7), size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          w != null ? w.locationName : 'Local City Weather',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? kDarkTextPrimary : kTextPrimary,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              w != null ? w.locationName : 'Local City Weather',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? kDarkTextPrimary : kTextPrimary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: kPrimaryColor.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(6),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.edit_location_alt_rounded, size: 14, color: kPrimaryColor),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: kPrimaryColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'LIVE REST',
+                              style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: kPrimaryColor),
+                            ),
                           ),
-                          child: const Text(
-                            'LIVE REST',
-                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: kPrimaryColor),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      w != null
-                          ? '${w.weatherCondition} • ${w.temperature.toStringAsFixed(1)}°C • ${w.relativeHumidity}% Humidity'
-                          : 'Fetching live meteorological data...',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: isDark ? kDarkTextSecondary : kTextSecondary,
+                        ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 2),
+                      Text(
+                        w != null
+                            ? '${w.weatherCondition} • ${w.temperature.toStringAsFixed(1)}°C • ${w.relativeHumidity}% Humidity'
+                            : 'Fetching live meteorological data...',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? kDarkTextSecondary : kTextSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              if (_isLoadingWeather)
-                const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: kPrimaryColor),
-                ),
-            ],
-          ),
+                if (_isLoadingWeather)
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: kPrimaryColor),
+                  )
+                else
+                  const Icon(Icons.keyboard_arrow_right_rounded, size: 18, color: Colors.grey),
+              ],
+            ),
           if (w != null) ...[
             const SizedBox(height: 10),
             Container(
@@ -1020,7 +1047,7 @@ class _IotManagementScreenState extends State<IotManagementScreen>
           ],
         ],
       ),
-    );
+    ),);
   }
 
   /// Banner when opened from plant detail screen to link an IoT sensor

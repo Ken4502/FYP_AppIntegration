@@ -28,6 +28,22 @@ class UserLocation {
     }
     return 'Local Area';
   }
+
+  Map<String, dynamic> toJson() => {
+    'city': city,
+    'region': region,
+    'country': country,
+    'latitude': latitude,
+    'longitude': longitude,
+  };
+
+  factory UserLocation.fromJson(Map<String, dynamic> json) => UserLocation(
+    city: json['city'] as String? ?? '',
+    region: json['region'] as String? ?? '',
+    country: json['country'] as String? ?? '',
+    latitude: (json['latitude'] as num?)?.toDouble() ?? 3.1390,
+    longitude: (json['longitude'] as num?)?.toDouble() ?? 101.6869,
+  );
 }
 
 class WeatherData {
@@ -80,13 +96,81 @@ class WeatherService {
   UserLocation? _cachedLocation;
   UserLocation? get currentLocation => _cachedLocation;
 
-  /// Pinpoints the user's city and state via IP/Wi-Fi geolocation with zero OS popups/permissions.
+  /// Quick-select popular cities in Malaysia and neighboring regions
+  static const List<UserLocation> popularCities = [
+    UserLocation(city: 'Kuala Lumpur', region: 'Federal Territory', country: 'Malaysia', latitude: 3.1390, longitude: 101.6869),
+    UserLocation(city: 'Petaling Jaya', region: 'Selangor', country: 'Malaysia', latitude: 3.1073, longitude: 101.6067),
+    UserLocation(city: 'Subang Jaya', region: 'Selangor', country: 'Malaysia', latitude: 3.0438, longitude: 101.5806),
+    UserLocation(city: 'Shah Alam', region: 'Selangor', country: 'Malaysia', latitude: 3.0738, longitude: 101.5183),
+    UserLocation(city: 'Klang', region: 'Selangor', country: 'Malaysia', latitude: 3.0449, longitude: 101.4456),
+    UserLocation(city: 'Puchong', region: 'Selangor', country: 'Malaysia', latitude: 3.0333, longitude: 101.6167),
+    UserLocation(city: 'Cyberjaya / Putrajaya', region: 'Selangor', country: 'Malaysia', latitude: 2.9213, longitude: 101.6559),
+    UserLocation(city: 'George Town', region: 'Penang', country: 'Malaysia', latitude: 5.4141, longitude: 100.3288),
+    UserLocation(city: 'Bayan Lepas', region: 'Penang', country: 'Malaysia', latitude: 5.2954, longitude: 100.2642),
+    UserLocation(city: 'Johor Bahru', region: 'Johor', country: 'Malaysia', latitude: 1.4927, longitude: 103.7414),
+    UserLocation(city: 'Ipoh', region: 'Perak', country: 'Malaysia', latitude: 4.5975, longitude: 101.0901),
+    UserLocation(city: 'Melaka', region: 'Melaka', country: 'Malaysia', latitude: 2.1896, longitude: 102.2501),
+    UserLocation(city: 'Seremban', region: 'Negeri Sembilan', country: 'Malaysia', latitude: 2.7297, longitude: 101.9381),
+    UserLocation(city: 'Kuantan', region: 'Pahang', country: 'Malaysia', latitude: 3.8077, longitude: 103.3260),
+    UserLocation(city: 'Kota Kinabalu', region: 'Sabah', country: 'Malaysia', latitude: 5.9804, longitude: 116.0735),
+    UserLocation(city: 'Kuching', region: 'Sarawak', country: 'Malaysia', latitude: 1.5533, longitude: 110.3592),
+  ];
+
+  /// Search cities worldwide with exact coordinates using Open-Meteo Geocoding API
+  Future<List<UserLocation>> searchCities(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return popularCities;
+
+    try {
+      final encoded = Uri.encodeComponent(q);
+      final url = Uri.parse('https://geocoding-api.open-meteo.com/v1/search?name=$encoded&count=10&language=en&format=json');
+      final res = await http.get(url).timeout(const Duration(seconds: 4));
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final results = data['results'] as List?;
+        if (results != null && results.isNotEmpty) {
+          return results.map((item) {
+            final map = item as Map<String, dynamic>;
+            return UserLocation(
+              city: (map['name'] as String?)?.trim() ?? '',
+              region: (map['admin1'] as String?)?.trim() ?? '',
+              country: (map['country'] as String?)?.trim() ?? '',
+              latitude: (map['latitude'] as num?)?.toDouble() ?? 3.1390,
+              longitude: (map['longitude'] as num?)?.toDouble() ?? 101.6869,
+            );
+          }).toList();
+        }
+      }
+    } catch (_) {}
+
+    // Filter popular cities as local fallback
+    final lowerQ = q.toLowerCase();
+    return popularCities.where((c) =>
+      c.city.toLowerCase().contains(lowerQ) ||
+      c.region.toLowerCase().contains(lowerQ) ||
+      c.displayName.toLowerCase().contains(lowerQ)
+    ).toList();
+  }
+
+  /// Manually select a city and immediately fetch its live weather
+  Future<WeatherData> selectCity(UserLocation location) async {
+    _cachedLocation = location;
+    return fetchLocalWeather(
+      latitude: location.latitude,
+      longitude: location.longitude,
+      locationName: location.displayName,
+      forceRefreshLocation: false,
+    );
+  }
+
+  /// Pinpoints user's city via IP/Wi-Fi geolocation with zero OS popups/permissions.
   Future<UserLocation> resolveUserLocation({bool forceRefresh = false}) async {
     if (!forceRefresh && _cachedLocation != null) {
       return _cachedLocation!;
     }
 
-    // 1. Primary: ip-api.com (fast, lightweight, highly accurate city & region in Malaysia and worldwide)
+    // 1. Primary: ip-api.com
     try {
       final uri = Uri.parse('http://ip-api.com/json/?fields=status,country,regionName,city,lat,lon');
       final res = await http.get(uri).timeout(const Duration(seconds: 4));
@@ -137,7 +221,6 @@ class WeatherService {
   }
 
   /// Fetch live real-time local weather for the user's pinpointed city and state.
-  /// If [latitude] and [longitude] are omitted, automatically resolves user's current city.
   Future<WeatherData> fetchLocalWeather({
     double? latitude,
     double? longitude,
