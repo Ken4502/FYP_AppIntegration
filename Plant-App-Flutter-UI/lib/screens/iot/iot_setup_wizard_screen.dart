@@ -140,6 +140,9 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
     }
   }
 
+  // Dialog tracking
+  BuildContext? _connectingDialogContext;
+
   /// Transmit selected credentials to ESP32 SoftAP & begin verification
   Future<void> _transmitCredentialsToSoftAP() async {
     final ssid = _isManualSsid ? _manualSsidController.text.trim() : (_selectedSsid ?? '').trim();
@@ -157,25 +160,19 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
       return;
     }
 
+    // 1. Immediately update UI state and show connecting modal dialog (instant feedback)
     setState(() {
       _isSendingToSoftAp = true;
-      _statusMessage = 'Transmitting network credentials to ESP32...';
+      _statusMessage = 'Connecting ESP32 to "$ssid"...';
     });
 
-    // Create pending session in Firestore if online, or generate fallback token
-    try {
-      _setupToken = await _provisioningService.createPendingProvisioningSession(
-        deviceId: deviceId,
-        ssid: ssid,
-      );
-    } catch (_) {
-      _setupToken = _provisioningService.generateSetupToken();
-    }
-
-    if (!mounted) return;
     _showConnectingDialog(context, ssid);
 
+    // 2. Generate local setup token instantly without blocking on offline network calls
+    _setupToken = _provisioningService.generateSetupToken();
+
     try {
+      // 3. Send HTTP POST directly to ESP32 SoftAP at 192.168.4.1/provision
       await _provisioningService.sendCredentialsToSoftAP(
         ssid: ssid,
         password: pass,
@@ -183,14 +180,12 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
         deviceId: deviceId,
       );
 
-      // Dismiss connecting dialog
-      if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
-        Navigator.of(context, rootNavigator: true).pop();
-      }
+      // Dismiss connecting dialog cleanly
+      _dismissConnectingDialog();
 
       if (!mounted) return;
 
-      // Upon 200 OK, transition to Buffering & Cloud Verification state
+      // 4. Upon 200 OK, transition to Step 2 (Cloud Verification)
       setState(() {
         _isSendingToSoftAp = false;
         _currentStep = 2;
@@ -200,10 +195,8 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
 
       _startVerificationCountdown(_setupToken!, deviceId, ssid);
     } catch (e) {
-      // Dismiss connecting dialog
-      if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
-        Navigator.of(context, rootNavigator: true).pop();
-      }
+      // Dismiss connecting dialog cleanly
+      _dismissConnectingDialog();
 
       if (!mounted) return;
       setState(() => _isSendingToSoftAp = false);
@@ -215,89 +208,99 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
     }
   }
 
+  void _dismissConnectingDialog() {
+    if (_connectingDialogContext != null && _connectingDialogContext!.mounted) {
+      Navigator.of(_connectingDialogContext!).pop();
+      _connectingDialogContext = null;
+    }
+  }
+
   void _showConnectingDialog(BuildContext context, String ssid) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: Dialog(
-          backgroundColor: isDark ? kDarkCardColor : kSurfaceColor,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: kPrimaryColor.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
+      builder: (ctx) {
+        _connectingDialogContext = ctx;
+        return PopScope(
+          canPop: false,
+          child: Dialog(
+            backgroundColor: isDark ? kDarkCardColor : kSurfaceColor,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 64,
+                    height: 64,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: kPrimaryColor.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const CircularProgressIndicator(
+                      strokeWidth: 3,
+                      valueColor: AlwaysStoppedAnimation<Color>(kPrimaryColor),
+                    ),
                   ),
-                  child: const CircularProgressIndicator(
-                    strokeWidth: 3,
-                    valueColor: AlwaysStoppedAnimation<Color>(kPrimaryColor),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Verifying Wi-Fi Connection...',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Verifying Wi-Fi Connection...',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
+                  const SizedBox(height: 8),
+                  Text(
+                    'ESP32 is testing connection to\n"$ssid"',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: kTextSecondary,
+                      height: 1.4,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'ESP32 is testing connection to\n"$ssid"',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: kTextSecondary,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isDark ? kDarkSurfaceColor : kBackgroundColor,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.lock_clock_rounded, size: 16, color: kPrimaryColor),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          'Handshaking with router & verifying password...',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            color: isDark ? kDarkTextSecondary : kTextSecondary,
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isDark ? kDarkSurfaceColor : kBackgroundColor,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.lock_clock_rounded, size: 16, color: kPrimaryColor),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'Handshaking with router & verifying password...',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: isDark ? kDarkTextSecondary : kTextSecondary,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  '⚡ Fast test (takes ~2s). SoftAP stays active.',
-                  style: TextStyle(fontSize: 11, color: kPrimaryColor, fontWeight: FontWeight.w600),
-                ),
-              ],
+                  const SizedBox(height: 14),
+                  const Text(
+                    '⚡ Fast test (takes ~2s). SoftAP stays active.',
+                    style: TextStyle(fontSize: 11, color: kPrimaryColor, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -807,6 +810,35 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
           ),
           const SizedBox(height: 20),
 
+          // Active connecting indicator card in the card itself
+          if (_isSendingToSoftAp) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: kPrimaryColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: kPrimaryColor),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Testing connection to "${_isManualSsid ? _manualSsidController.text : (_selectedSsid ?? 'Wi-Fi')}"...',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryColor),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
+
           // Connect Button
           SizedBox(
             width: double.infinity,
@@ -816,7 +848,7 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                   : const Icon(Icons.send_rounded, size: 18),
               label: Text(
-                _isSendingToSoftAp ? 'Connecting...' : 'Connect ESP32 to Wi-Fi',
+                _isSendingToSoftAp ? 'Connecting to Router...' : 'Connect ESP32 to Wi-Fi',
                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
