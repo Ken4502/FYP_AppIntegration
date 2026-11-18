@@ -177,7 +177,7 @@ class IotProvisioningService {
         uri,
         headers: {'Content-Type': 'application/json'},
         body: payload,
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         return true;
@@ -191,6 +191,8 @@ class IotProvisioningService {
         } catch (_) {}
         throw Exception(errorMsg);
       }
+    } on TimeoutException {
+      throw Exception('Connection to ESP32 timed out. Ensure your phone remains connected to "ESP32_Plant_Irrigation".');
     } catch (e) {
       final msg = e.toString().replaceFirst('Exception: ', '');
       throw Exception(msg);
