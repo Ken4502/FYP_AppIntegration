@@ -5,6 +5,7 @@ import '../../constants.dart';
 import '../../models/iot_device_model.dart';
 import '../../models/plant_model.dart';
 import '../../services/iot_firestore_service.dart';
+import '../../services/iot_hybrid_connectivity_service.dart';
 import '../../services/plant_service.dart';
 import '../../services/weather_service.dart';
 import 'iot_activity_logs_screen.dart';
@@ -133,13 +134,16 @@ class _IotManagementScreenState extends State<IotManagementScreen>
       plantId: plant.id,
       plantName: plant.name,
       plantImage: plant.imageUrl,
+      optimalMinMoisture: plant.optimalMinMoisture,
+      optimalMaxMoisture: plant.optimalMaxMoisture,
     );
     _plantService.assignDeviceToPlant(plantId: plant.id, deviceId: device.id);
+    IotHybridConnectivityService().clearActivityLogs();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('🎉 Successfully linked ${device.name} to ${plant.name}!'),
+          content: Text('🎉 Linked ${device.name} to ${plant.name}! Logs & settings reset to defaults.'),
           backgroundColor: kPrimaryColor,
           behavior: SnackBarBehavior.floating,
         ),
@@ -151,10 +155,11 @@ class _IotManagementScreenState extends State<IotManagementScreen>
   Future<void> _unlinkPlant(IotDevice device) async {
     await _firestoreService.unlinkPlant(device.id);
     _plantService.unassignDevice(device.id);
+    IotHybridConnectivityService().clearActivityLogs();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Unlinked plant from ${device.name}.'),
+          content: Text('Unlinked plant from ${device.name}. Logs and settings reset to defaults.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -258,8 +263,11 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                                     plantId: p.id,
                                     plantName: p.name,
                                     plantImage: p.imageUrl,
+                                    optimalMinMoisture: p.optimalMinMoisture,
+                                    optimalMaxMoisture: p.optimalMaxMoisture,
                                   );
                                   _plantService.assignDeviceToPlant(plantId: p.id, deviceId: device.id);
+                                  IotHybridConnectivityService().clearActivityLogs();
                                   if (mounted) setState(() {});
                                 },
                                 style: OutlinedButton.styleFrom(

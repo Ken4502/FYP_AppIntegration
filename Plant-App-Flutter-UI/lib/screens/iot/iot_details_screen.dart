@@ -483,44 +483,34 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
 
   Future<void> _disconnectWifi() async {
     final currentSsid = widget.device.wifiSsid ?? _service.registeredHomeSsid ?? 'configured network';
-    final action = await showDialog<String>(
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: const Row(
           children: [
-            Icon(Icons.wifi_off_rounded, color: Color(0xFFDC2626), size: 24),
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 24),
             SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Disconnect IoT Device',
+                'Disconnect Wi-Fi & Reset IoT?',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ],
         ),
         content: Text(
-          'Choose how you want to disconnect "$currentSsid":\n\n'
-          '1. Disconnect Wi-Fi Only:\n'
-          '• Erases Wi-Fi on the ESP32 and broadcasts "ESP32_Plant_Irrigation".\n'
-          '• Keeps the device registered in your app as an offline standby probe.\n\n'
-          '2. Disconnect & Unpair from App:\n'
-          '• Erases Wi-Fi on the ESP32 and broadcasts "ESP32_Plant_Irrigation".\n'
-          '• Completely removes the device from Firebase and deletes it from your list.',
-          style: const TextStyle(fontSize: 12.5, color: kTextPrimary, height: 1.4),
+          'Warning: Disconnecting "$currentSsid" will completely wipe and reset this IoT device:\n\n'
+          '• Hardware: Erases all Wi-Fi credentials on the ESP32 and reboots it into setup mode ("ESP32_Plant_Irrigation").\n'
+          '• Cloud Firestore: Deletes all telemetry, device configurations, and historical activity logs permanently.\n'
+          '• Plant Pairing: Unbinds any linked plant specimen and reverts care to default manual mode.\n\n'
+          'This probe will be completely removed from your account, reverting everything to its original state before linking. Proceed?',
+          style: const TextStyle(fontSize: 13, color: kTextPrimary, height: 1.45),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, null),
-            child: const Text('Cancel', style: TextStyle(color: kTextSecondary)),
-          ),
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx, 'wifiOnly'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFFD97706),
-              side: const BorderSide(color: Color(0xFFFCD34D)),
-            ),
-            child: const Text('Wi-Fi Only (Keep in List)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: kTextSecondary, fontWeight: FontWeight.bold)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -528,62 +518,52 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            onPressed: () => Navigator.pop(ctx, 'unpair'),
-            child: const Text('Disconnect & Unpair', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Disconnect & Reset Everything', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
 
-    if (action == null || !mounted) return;
+    if (confirm != true || !mounted) return;
 
     setState(() => _isResettingWifi = true);
 
     try {
+      // 1. Send remote reset to ESP32 if online
       if (widget.device.isOnline) {
         await _firestoreService.sendResetCommand(widget.device.id);
-        await Future.delayed(const Duration(milliseconds: 800));
+        await Future.delayed(const Duration(milliseconds: 600));
       }
 
-      if (action == 'unpair') {
-        await _firestoreService.factoryResetDevice(widget.device.id);
-        _plantService.unassignDevice(widget.device.id);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Device unpaired and removed from your account.'),
-              backgroundColor: kPrimaryColor,
-              behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 4),
-            ),
-          );
-          Navigator.pop(context, true);
-        }
-      } else {
-        await _service.resetDeviceWifi(widget.device.id);
-        if (!mounted) return;
-        setState(() {
-          _isResettingWifi = false;
-          widget.device.isWifiConnected = false;
-          widget.device.wifiSsid = null;
-        });
+      // 2. Completely delete device and all logs from Cloud Firestore
+      await _firestoreService.deleteDevice(widget.device.id);
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Wi-Fi disconnected. ESP32 is now in standalone setup mode.'),
-            backgroundColor: kPrimaryColor,
-            behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 4),
-          ),
-        );
-        Navigator.pop(context, true);
-      }
+      // 3. Unassign from plant
+      _plantService.unassignDevice(widget.device.id);
+
+      // 4. Reset local hardware connectivity caches & activity logs
+      await _service.resetDeviceWifi(widget.device.id);
+      _service.clearActivityLogs();
+
+      if (!mounted) return;
+      setState(() => _isResettingWifi = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('IoT probe disconnected and all data completely reset.'),
+          backgroundColor: kPrimaryColor,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      Navigator.pop(context, true); // Returns to IoT screen, device is 100% gone
     } catch (e) {
       if (mounted) {
         setState(() => _isResettingWifi = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to disconnect: $e'),
+            content: Text('Failed to reset device: $e'),
             backgroundColor: kStatusDanger,
             behavior: SnackBarBehavior.floating,
           ),
@@ -3608,47 +3588,56 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                               return;
                             }
 
-                            if (isAssignedToOther) {
-                              final confirm = await showDialog<bool>(
-                                context: context,
-                                builder: (dlgContext) => AlertDialog(
-                                  title: const Text('Reassign Probe?'),
-                                  content: Text(
-                                    '${plant.name} is currently monitored by probe "${plant.iotDeviceId}". '
-                                    'Reassigning it will transfer monitoring to "${widget.device.name}". '
-                                    'Each plant can only be assigned to one probe. Proceed?',
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(dlgContext, false),
-                                      child: const Text('Cancel'),
-                                    ),
-                                    ElevatedButton(
-                                      style: ElevatedButton.styleFrom(backgroundColor: kPrimaryColor),
-                                      onPressed: () => Navigator.pop(dlgContext, true),
-                                      child: const Text('Reassign', style: TextStyle(color: Colors.white)),
-                                    ),
-                                  ],
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (dlgContext) => AlertDialog(
+                                title: Text(isAssignedToOther ? 'Reassign Probe?' : 'Assign Specimen?'),
+                                content: Text(
+                                  isAssignedToOther
+                                      ? '${plant.name} is currently monitored by probe "${plant.iotDeviceId}". '
+                                        'Reassigning it will transfer monitoring to "${widget.device.name}", '
+                                        'clear previous logs, and reset watering configuration to defaults for this specimen. Proceed?'
+                                      : 'Assigning "${plant.name}" will clear all past logs related to the previous specimen and reset watering configuration to defaults. Proceed?',
                                 ),
-                              );
-                              if (confirm != true) return;
-                            }
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(dlgContext, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(backgroundColor: kPrimaryColor),
+                                    onPressed: () => Navigator.pop(dlgContext, true),
+                                    child: const Text('Assign & Reset Logs', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirm != true) return;
 
                             _plantService.assignDeviceToPlant(
                               plantId: plant.id,
                               deviceId: widget.device.id,
                             );
-                            _firestoreService.linkPlant(
+                            await _firestoreService.linkPlant(
                               widget.device.id,
                               plantId: plant.id,
                               plantName: plant.name,
                               plantImage: plant.imageUrl,
+                              optimalMinMoisture: plant.optimalMinMoisture,
+                              optimalMaxMoisture: plant.optimalMaxMoisture,
                             );
+                            _service.clearActivityLogs();
 
                             if (mounted) {
+                              setState(() {
+                                _mode = 'MANUAL';
+                                widget.device.autoWaterEnabled = false;
+                                widget.device.linkedPlantId = plant.id;
+                                widget.device.linkedPlantName = plant.name;
+                              });
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: Text('🌿 Successfully assigned ${plant.name} to ${widget.device.name}!'),
+                                  content: Text('🌿 Successfully assigned ${plant.name}! Logs and settings reset to defaults.'),
                                   backgroundColor: kPrimaryColor,
                                 ),
                               );
@@ -3672,8 +3661,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
       builder: (dlgContext) => AlertDialog(
         title: const Text('Unlink Specimen?'),
         content: Text(
-          'Are you sure you want to unlink ${plant.name} from ${widget.device.name}? '
-          'This probe will become unassigned and available for any other plant.',
+          'Unlinking "${plant.name}" from ${widget.device.name} will clear all past logs related to this specimen and reset watering configurations to defaults. Proceed?',
         ),
         actions: [
           TextButton(
@@ -3682,20 +3670,27 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: kStatusDanger),
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(dlgContext);
               _plantService.unassignDevice(widget.device.id);
-              _firestoreService.unlinkPlant(widget.device.id);
+              await _firestoreService.unlinkPlant(widget.device.id);
+              _service.clearActivityLogs();
               if (mounted) {
+                setState(() {
+                  _mode = 'MANUAL';
+                  widget.device.autoWaterEnabled = false;
+                  widget.device.linkedPlantId = null;
+                  widget.device.linkedPlantName = null;
+                });
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Unlinked ${plant.name} from probe.'),
+                    content: Text('Unlinked ${plant.name}. Previous logs cleared and reset to defaults.'),
                     backgroundColor: Colors.black87,
                   ),
                 );
               }
             },
-            child: const Text('Unlink', style: TextStyle(color: Colors.white)),
+            child: const Text('Unlink & Reset', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
       ),

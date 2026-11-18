@@ -167,43 +167,94 @@ class IotFirestoreService {
     );
   }
 
-  /// Strict 1-to-1 Plant linking
+  /// Strict 1-to-1 Plant linking.
+  /// Changing or assigning a specimen completely purges previous logs and restores
+  /// device functionalities to clean default configurations calibrated for the specimen.
   Future<void> linkPlant(
     String deviceId, {
     required String plantId,
     required String plantName,
     String? plantImage,
+    int? optimalMinMoisture,
+    int? optimalMaxMoisture,
   }) async {
+    // 1. Completely purge historical logs from the previous plant
+    await clearDeviceLogs(deviceId);
+
+    // 2. Reset device functionalities to safe factory defaults for the new plant
+    final low = optimalMinMoisture ?? 25;
+    final high = optimalMaxMoisture ?? 45;
+
     await _devicesCol.doc(deviceId).set({
       'linkedPlantId': plantId,
       'linkedPlantName': plantName,
       'linkedPlantImage': plantImage,
+      'mode': 'MANUAL',
+      'autoWaterEnabled': false,
+      'isPumpRunning': false,
+      'lowThreshold': low,
+      'lowMoistureThreshold': low,
+      'highThreshold': high,
+      'highMoistureThreshold': high,
+      'isLowMoistureAlertIgnored': false,
+      'lowMoistureAlwaysIgnored': false,
+      'lowMoistureIgnoredUntil': null,
+      'lastAlertSentAt': null,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
+    // 3. Add clean initial log for the newly linked plant
     await addDeviceLog(
       deviceId,
-      title: 'Plant Linked',
-      detail: 'Sensor paired to specimen "$plantName".',
+      title: 'Specimen Assigned: $plantName',
+      detail: 'Probe linked. Previous logs wiped and functionalities reset to default manual care ($low% - $high%).',
       type: IotLogType.system,
     );
   }
 
-  /// Unlink current plant
+  /// Unlink current plant.
+  /// Completely purges all previous logs and restores device functionalities to clean defaults.
   Future<void> unlinkPlant(String deviceId) async {
+    // 1. Purge all previous logs
+    await clearDeviceLogs(deviceId);
+
+    // 2. Revert device functionalities to clean defaults
     await _devicesCol.doc(deviceId).set({
       'linkedPlantId': null,
       'linkedPlantName': null,
       'linkedPlantImage': null,
+      'mode': 'MANUAL',
+      'autoWaterEnabled': false,
+      'isPumpRunning': false,
+      'lowThreshold': 25,
+      'lowMoistureThreshold': 25,
+      'highThreshold': 45,
+      'highMoistureThreshold': 45,
+      'isLowMoistureAlertIgnored': false,
+      'lowMoistureAlwaysIgnored': false,
+      'lowMoistureIgnoredUntil': null,
+      'lastAlertSentAt': null,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
     await addDeviceLog(
       deviceId,
       title: 'Plant Unlinked',
-      detail: 'Sensor specimen unlinked.',
+      detail: 'Specimen unlinked. All previous logs cleared and functionalities reverted to default configuration.',
       type: IotLogType.system,
     );
+  }
+
+  /// Delete all activity and watering logs in `iot_devices/{deviceId}/logs`
+  Future<void> clearDeviceLogs(String deviceId) async {
+    try {
+      final logsSnapshot = await _devicesCol.doc(deviceId).collection('logs').get();
+      final batch = _firestore.batch();
+      for (final doc in logsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    } catch (_) {}
   }
 
   /// Rename device
@@ -268,10 +319,10 @@ class IotFirestoreService {
     await deleteDevice(deviceId);
   }
 
-  /// Delete / Unpair device from Cloud Firestore
+  /// Delete / Unpair device from Cloud Firestore (Wiping all data & logs)
   Future<void> deleteDevice(String deviceId) async {
     try {
-      // Attempt to dispatch FACTORY_RESET command first if device document exists
+      // 1. Attempt to dispatch FACTORY_RESET command first if device document exists
       final cmdId = 'cmd_wipe_${DateTime.now().millisecondsSinceEpoch}';
       await _devicesCol.doc(deviceId).set({
         'pendingCommand': {
@@ -282,9 +333,13 @@ class IotFirestoreService {
         },
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      await Future.delayed(const Duration(milliseconds: 400));
+      await Future.delayed(const Duration(milliseconds: 500));
     } catch (_) {}
 
+    // 2. Completely delete all subcollection activity logs
+    await clearDeviceLogs(deviceId);
+
+    // 3. Delete the root device document
     await _devicesCol.doc(deviceId).delete();
   }
 
