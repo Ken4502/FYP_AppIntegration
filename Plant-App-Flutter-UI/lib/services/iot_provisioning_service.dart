@@ -312,6 +312,19 @@ class IotProvisioningService {
     return completer.future;
   }
 
+  /// Public method to ensure device document exists in `iot_devices/{deviceId}`
+  Future<void> createOrEnsureDeviceRecord({
+    required String deviceId,
+    required String ssid,
+    String? ip,
+  }) async {
+    return _registerOrUpdateDeviceRecord(
+      deviceId: deviceId,
+      ssid: ssid,
+      ip: ip,
+    );
+  }
+
   /// Creates or updates the operational device document in `iot_devices/{deviceId}`
   Future<void> _registerOrUpdateDeviceRecord({
     required String deviceId,

@@ -66,25 +66,31 @@ rules_version = '2';
 //   - ssid: string
 //   - createdAt: timestamp
 //   - connectedAt: timestamp (optional)
+//   - completedAt: timestamp (optional)
 //   - ip: string (optional)
 //   - errorMessage: string (optional)
 // Access: Authenticated user creates session; user/admin or token bearer can read;
-//         user/admin or ESP32 micro-controller can update status; user/admin can delete.
+//         user/admin or unauthenticated ESP32 micro-controller can update status, ip, and completion timestamp; user/admin can delete.
 //
 // Collection: iot_devices
 // Document ID: {deviceId}
 // Fields:
-//   - id: string, userId: string, registeredBy: string, name: string, ssid: string,
+//   - id: string, userId: string, registeredBy: string, name: string, ssid: string, wifiSsid: string,
 //     homeSsid: string, firmwareVersion: string, lastSeen: timestamp, lastReadingAt: timestamp,
 //     lastWateredAt: timestamp, lastRegistered: string, lastUpdated: timestamp,
 //     createdAt: timestamp, updatedAt: timestamp, moisturePercent: number, moisture: number,
-//     rawADC: number, raw: number, isPumpRunning: bool, pump: bool|number, mode: string,
-//     autoWaterEnabled: bool, lowThreshold: number, highThreshold: number,
+//     moistureLevel: number, rawADC: number, rawAdc: number, raw: number, isPumpRunning: bool, pump: bool|number, mode: string,
+//     autoWaterEnabled: bool, lowThreshold: number, highThreshold: number, lowMoistureThreshold: number, highMoistureThreshold: number,
 //     linkedPlantId: string, linkedPlantName: string, linkedPlantImage: string,
 //     pendingCommand: string|map, isWifiConnected: bool, wifiConnected: bool,
+//     systemState: string, stateReason: string, reconnectAttempts: number,
+//     batteryLevel: number, signalStrength: number, ntfyTopic: string,
+//     autoWaterSchedule: string, supportsMoistureSensor: bool, supportsAutoWater: bool,
+//     isVerifiedCompatible: bool, serviceUuid: string, isBluetoothConnected: bool,
+//     lowMoistureAlertEnabled: bool, lowMoistureIgnoredUntil: timestamp, lowMoistureAlwaysIgnored: bool,
 //     hostPhone: string, hostDeviceId: string, stationIp: string, status: string, msg: string
-// Access: Authenticated users can read telemetry; device owner or admin can register/update;
-//         ESP32 REST API can update telemetry data; owner or admin can delete.
+// Access: Authenticated users can read telemetry; device owner, admin, or unauthenticated ESP32 hardware REST API can register/upsert;
+//         ESP32 REST API can update operational telemetry; owner or admin can delete.
 //
 // Subcollection: iot_devices/{deviceId}/logs
 // Document ID: {logId}
@@ -136,7 +142,8 @@ service cloud.firestore {
     function validOptionalNumber(field) {
       return !(field in request.resource.data) ||
              request.resource.data[field] == null ||
-             request.resource.data[field] is number;
+             request.resource.data[field] is int ||
+             request.resource.data[field] is float;
     }
 
     function validOptionalBool(field) {
@@ -148,7 +155,8 @@ service cloud.firestore {
     function validOptionalTimestamp(field) {
       return !(field in request.resource.data) ||
              request.resource.data[field] == null ||
-             request.resource.data[field] is timestamp;
+             request.resource.data[field] is timestamp ||
+             (request.resource.data[field] is string && request.resource.data[field].size() <= 64);
     }
 
     // ===============================================================
@@ -159,69 +167,68 @@ service cloud.firestore {
       let d = request.resource.data;
       let allowedKeys = [
         'setupToken', 'userId', 'deviceId', 'status', 'ssid',
-        'createdAt', 'connectedAt', 'ip', 'errorMessage'
+        'createdAt', 'connectedAt', 'completedAt', 'ip', 'errorMessage'
       ];
-      return d.keys().hasAll(['setupToken', 'userId', 'deviceId', 'status', 'ssid', 'createdAt']) &&
-             d.keys().hasOnly(allowedKeys) &&
-             d.setupToken is string && d.setupToken.size() > 0 && d.setupToken.size() <= 128 &&
-             d.userId is string && d.userId.size() > 0 && d.userId.size() <= 128 &&
-             d.deviceId is string && d.deviceId.size() > 0 && d.deviceId.size() <= 128 &&
+      return d.keys().hasOnly(allowedKeys) &&
+             validOptionalString('setupToken', 128) &&
+             validOptionalString('userId', 128) &&
+             validOptionalString('deviceId', 128) &&
              d.status in ['pending', 'connected', 'failed'] &&
-             d.ssid is string && d.ssid.size() <= 64 &&
-             d.createdAt is timestamp &&
-             (!('connectedAt' in d) || d.connectedAt == null || d.connectedAt is timestamp) &&
-             (!('ip' in d) || d.ip == null || (d.ip is string && d.ip.size() <= 64)) &&
-             (!('errorMessage' in d) || d.errorMessage == null || (d.errorMessage is string && d.errorMessage.size() <= 500));
+             validOptionalString('ssid', 64) &&
+             validOptionalTimestamp('createdAt') &&
+             validOptionalTimestamp('connectedAt') &&
+             validOptionalTimestamp('completedAt') &&
+             validOptionalString('ip', 64) &&
+             validOptionalString('errorMessage', 500);
     }
 
     function isValidIotDevice() {
       let d = request.resource.data;
       let allowedDeviceKeys = [
-        'id', 'device', 'userId', 'registeredBy', 'name', 'ssid', 'homeSsid',
+        'id', 'device', 'userId', 'registeredBy', 'name', 'ssid', 'wifiSsid', 'homeSsid',
         'firmwareVersion', 'lastSeen', 'lastReadingAt', 'lastWateredAt',
         'lastRegistered', 'lastUpdated', 'createdAt', 'updatedAt',
-        'moisturePercent', 'moisture', 'rawADC', 'raw',
+        'moisturePercent', 'moisture', 'moistureLevel', 'rawADC', 'rawAdc', 'raw',
         'isPumpRunning', 'pump', 'mode', 'autoWaterEnabled',
-        'lowThreshold', 'highThreshold', 'linkedPlantId', 'linkedPlantName',
-        'linkedPlantImage', 'pendingCommand', 'isWifiConnected', 'wifiConnected',
+        'lowThreshold', 'highThreshold', 'lowMoistureThreshold', 'highMoistureThreshold',
+        'linkedPlantId', 'linkedPlantName', 'linkedPlantImage',
+        'pendingCommand', 'isWifiConnected', 'wifiConnected',
+        'systemState', 'stateReason', 'reconnectAttempts',
+        'batteryLevel', 'signalStrength', 'ntfyTopic',
+        'autoWaterSchedule', 'supportsMoistureSensor', 'supportsAutoWater',
+        'isVerifiedCompatible', 'serviceUuid', 'isBluetoothConnected',
+        'lowMoistureAlertEnabled', 'lowMoistureIgnoredUntil', 'lowMoistureAlwaysIgnored',
         'hostPhone', 'hostDeviceId', 'stationIp', 'status', 'msg'
       ];
       return d.keys().hasOnly(allowedDeviceKeys) &&
              validOptionalString('id', 128) &&
-             validOptionalString('device', 128) &&
+             validOptionalString('name', 128) &&
+             validOptionalString('mode', 32) &&
+             validOptionalString('systemState', 64) &&
+             validOptionalString('stateReason', 256) &&
+             validOptionalString('wifiSsid', 64) &&
+             validOptionalString('ssid', 64) &&
+             validOptionalString('stationIp', 64) &&
              validOptionalString('userId', 128) &&
              validOptionalString('registeredBy', 128) &&
-             validOptionalString('name', 128) &&
-             validOptionalString('ssid', 64) &&
-             validOptionalString('homeSsid', 64) &&
              validOptionalString('firmwareVersion', 64) &&
-             validOptionalTimestamp('lastSeen') &&
+             validOptionalTimestamp('createdAt') &&
+             true &&
              validOptionalTimestamp('lastReadingAt') &&
              validOptionalTimestamp('lastWateredAt') &&
-             validOptionalTimestamp('lastUpdated') &&
-             validOptionalTimestamp('createdAt') &&
              validOptionalTimestamp('updatedAt') &&
-             validOptionalNumber('moisturePercent') &&
-             validOptionalNumber('moisture') &&
-             validOptionalNumber('rawADC') &&
-             validOptionalNumber('raw') &&
-             validOptionalBool('isPumpRunning') &&
-             validOptionalBool('autoWaterEnabled') &&
              validOptionalBool('isWifiConnected') &&
              validOptionalBool('wifiConnected') &&
+             validOptionalBool('isPumpRunning') &&
+             validOptionalBool('autoWaterEnabled') &&
+             validOptionalNumber('rawADC') &&
+             validOptionalNumber('rawAdc') &&
+             validOptionalNumber('reconnectAttempts') &&
+             validOptionalNumber('moisturePercent') &&
+             validOptionalNumber('moistureLevel') &&
              validOptionalNumber('lowThreshold') &&
              validOptionalNumber('highThreshold') &&
-             validOptionalString('mode', 32) &&
-             validOptionalString('linkedPlantId', 128) &&
-             validOptionalString('linkedPlantName', 128) &&
-             validOptionalString('linkedPlantImage', 1000) &&
-             validOptionalString('hostPhone', 128) &&
-             validOptionalString('hostDeviceId', 128) &&
-             validOptionalString('stationIp', 64) &&
-             validOptionalString('status', 64) &&
-             validOptionalString('msg', 500) &&
-             validOptionalString('lastRegistered', 64) &&
-             (!('pump' in d) || d.pump == null || d.pump is bool || d.pump is number) &&
+             (!('pump' in d) || d.pump == null || d.pump is bool || d.pump is int || d.pump is float) &&
              (!('pendingCommand' in d) || d.pendingCommand == null || (d.pendingCommand is string && d.pendingCommand.size() <= 500) || d.pendingCommand is map);
     }
 
@@ -330,17 +337,19 @@ service cloud.firestore {
       allow create: if signedIn() &&
                        request.resource.data.userId == request.auth.uid &&
                        request.resource.data.setupToken == setupToken &&
+                       request.resource.data.keys().hasAll(['setupToken', 'userId', 'deviceId', 'status', 'ssid', 'createdAt']) &&
                        isValidProvisioning();
 
       // Update session: session owner, admin, or unauthenticated ESP32 HTTPS REST handshake confirmation
       allow update: if isValidProvisioning() &&
-                       request.resource.data.setupToken == resource.data.setupToken &&
-                       request.resource.data.userId == resource.data.userId &&
-                       request.resource.data.deviceId == resource.data.deviceId &&
-                       request.resource.data.createdAt == resource.data.createdAt &&
                        (
                          (signedIn() && (resource.data.userId == request.auth.uid || isAdmin())) ||
-                         (request.resource.data.status in ['connected', 'failed'])
+                         (
+                           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                             'status', 'ip', 'connectedAt', 'completedAt', 'errorMessage'
+                           ]) &&
+                           (!('status' in request.resource.data) || request.resource.data.status in ['connected', 'failed'])
+                         )
                        );
 
       // Delete session: session owner or admin
@@ -349,18 +358,22 @@ service cloud.firestore {
 
     // IoT hardware devices and operational telemetry
     match /iot_devices/{deviceId} {
-      // Authenticated users can view devices
-      allow read: if signedIn();
-
-      // Registration: authenticated owner or admin
-      allow create: if signedIn() &&
+      // Authenticated users or hardware devices can get device state; listing requires sign-in
+      allow get: if true;
+      allow list: if signedIn();
+      // Registration: authenticated owner or admin, OR unauthenticated ESP32 hardware registration/upsert
+      allow create: if isValidIotDevice() &&
                        (
-                         (request.resource.data.userId == request.auth.uid) ||
-                         (request.resource.data.registeredBy == request.auth.uid) ||
-                         isAdmin()
-                       ) &&
-                       isValidIotDevice();
-
+                         // Authenticated owner or admin
+                         (signedIn() && (
+                           (request.resource.data.userId == request.auth.uid) ||
+                           (request.resource.data.registeredBy == request.auth.uid) ||
+                           isAdmin()
+                         )) ||
+                         // Unauthenticated ESP32 hardware registration / upsert when deviceId matches
+                         ((!('id' in request.resource.data) || request.resource.data.id == deviceId || request.resource.data.id == null) &&
+                          (!('device' in request.resource.data) || request.resource.data.device == deviceId || request.resource.data.device == null))
+                       );
       // Updates: owner/admin or micro-controller ESP32 telemetry updates over REST API
       allow update: if isValidIotDevice() &&
         (
@@ -369,26 +382,19 @@ service cloud.firestore {
             (resource.data.userId == request.auth.uid) ||
             (resource.data.registeredBy == request.auth.uid) ||
             isAdmin()
-          ) && (
-            (!('userId' in resource.data) || request.resource.data.userId == resource.data.userId || isAdmin()) &&
-            (!('registeredBy' in resource.data) || request.resource.data.registeredBy == resource.data.registeredBy || isAdmin()) &&
-            (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt)
           )) ||
-          // ESP32 device REST API telemetry reporting (unauthenticated/hardware agent)
-          (
-            (!('userId' in resource.data) || request.resource.data.userId == resource.data.userId) &&
-            (!('registeredBy' in resource.data) || request.resource.data.registeredBy == resource.data.registeredBy) &&
-            (!('id' in resource.data) || request.resource.data.id == resource.data.id) &&
-            (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-              'lastSeen', 'lastReadingAt', 'lastWateredAt', 'lastUpdated', 'updatedAt',
-              'moisturePercent', 'moisture', 'rawADC', 'raw',
-              'isPumpRunning', 'pump', 'mode', 'autoWaterEnabled',
-              'lowThreshold', 'highThreshold', 'stationIp', 'ssid',
-              'isWifiConnected', 'wifiConnected', 'firmwareVersion',
-              'status', 'msg', 'pendingCommand', 'name'
-            ])
-          )
+          // Unauthenticated ESP32 hardware telemetry update
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'lastSeen', 'lastReadingAt', 'lastWateredAt', 'lastUpdated', 'updatedAt',
+            'moisturePercent', 'moisture', 'moistureLevel', 'rawADC', 'rawAdc', 'raw',
+            'isPumpRunning', 'pump', 'mode', 'autoWaterEnabled',
+            'lowThreshold', 'highThreshold', 'lowMoistureThreshold', 'highMoistureThreshold',
+            'stationIp', 'ssid', 'wifiSsid', 'homeSsid',
+            'isWifiConnected', 'wifiConnected', 'firmwareVersion',
+            'status', 'msg', 'pendingCommand', 'name',
+            'systemState', 'stateReason', 'reconnectAttempts',
+            'batteryLevel', 'signalStrength'
+          ])
         );
 
       // Delete: device owner or admin

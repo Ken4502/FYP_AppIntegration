@@ -11,6 +11,7 @@ import 'platform/web_hardware_bridge.dart';
 import 'plant_service.dart';
 import 'iot_firestore_service.dart';
 import 'iot_provisioning_service.dart';
+import 'app_logger_service.dart';
 
 /// Result container for providing clear UI success/fail feedback
 class OperationFeedback {
@@ -293,6 +294,7 @@ class IotHybridConnectivityService {
     if (_debugLogs.length > 80) {
       _debugLogs.removeLast();
     }
+    AppLoggerService().info('IoT', message, category: LogCategory.iot);
   }
 
   void clearDebugLogs() {

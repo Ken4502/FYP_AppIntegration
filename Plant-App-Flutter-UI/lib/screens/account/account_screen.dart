@@ -12,6 +12,7 @@ import 'package:urbangreen/screens/account/change_username_screen.dart';
 import 'package:urbangreen/screens/account/order_history_screen.dart';
 import 'package:urbangreen/screens/address/address_screen.dart';
 import 'package:urbangreen/screens/auth/login_screen.dart';
+import 'package:urbangreen/screens/debug/app_log_monitor_screen.dart';
 import 'package:urbangreen/screens/garden/plant_list_screen.dart';
 import 'package:urbangreen/screens/iot/iot_management_screen.dart';
 import 'package:urbangreen/screens/reports/reports_screen.dart';
@@ -412,6 +413,19 @@ class _AccountScreenState extends State<AccountScreen> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(builder: (context) => const IotManagementScreen()),
+                                );
+                              },
+                            ),
+                            const Divider(height: 1, indent: 56),
+                            _buildOptionTile(
+                              icon: Icons.terminal_rounded,
+                              color: const Color(0xFF0F172A),
+                              title: 'App Behavior Log Monitor',
+                              subtitle: 'Live debug terminal, network telemetry & event stream',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const AppLogMonitorScreen()),
                                 );
                               },
                             ),

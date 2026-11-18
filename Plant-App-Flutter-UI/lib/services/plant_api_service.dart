@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:urbangreen/models/plant_diagnosis_model.dart';
 import 'platform/web_hardware_bridge.dart';
+import 'app_logger_service.dart';
 
 class PlantApiService {
   // Singleton pattern
@@ -237,6 +238,12 @@ class PlantApiService {
     await ensureActiveServerUrl();
 
     final uri = Uri.parse('$_serverUrl/api/predict');
+    AppLoggerService().info(
+      'PhytoCareAI',
+      'Sending plant diagnosis request to $_serverUrl (group: $plantGroup)',
+      category: LogCategory.http,
+      metadata: {'url': uri.toString(), 'filename': imageFile.name},
+    );
 
     try {
       final request = http.MultipartRequest('POST', uri);
@@ -253,6 +260,11 @@ class PlantApiService {
       final streamedResponse = await request.send().timeout(
         const Duration(seconds: 40),
         onTimeout: () {
+          AppLoggerService().warning(
+            'PhytoCareAI',
+            'Connection timed out after 40s waiting for AI diagnosis at $_serverUrl',
+            category: LogCategory.http,
+          );
           throw Exception(
             'Connection timed out after 40s waiting for AI diagnosis. Please verify the AI backend server is active at $_serverUrl',
           );
@@ -266,16 +278,27 @@ class PlantApiService {
         final Map<String, dynamic> data = jsonDecode(decodedBody) as Map<String, dynamic>;
 
         if (data['status'] == 'error') {
-          throw Exception(data['message'] ?? 'AI diagnosis returned an error.');
+          final msg = data['message'] ?? 'AI diagnosis returned an error.';
+          AppLoggerService().error('PhytoCareAI', 'AI Diagnosis Error: $msg', category: LogCategory.http);
+          throw Exception(msg);
         }
 
-        return PlantDiagnosisResponse.fromJson(data);
+        final result = PlantDiagnosisResponse.fromJson(data);
+        AppLoggerService().info(
+          'PhytoCareAI',
+          'AI Diagnosis Success: ${result.species.name} (${(result.species.confidence * 100).toStringAsFixed(1)}% confidence)',
+          category: LogCategory.http,
+          metadata: {'species': result.species.name, 'confidence': result.species.confidence, 'diagnosis': result.diagnosis.conditionName},
+        );
+        return result;
       } else {
+        AppLoggerService().error('PhytoCareAI', 'HTTP ${response.statusCode}: ${response.body}', category: LogCategory.http);
         throw Exception(
           'AI server responded with HTTP ${response.statusCode}: ${response.body}',
         );
       }
     } on SocketException catch (e) {
+      AppLoggerService().error('PhytoCareAI', 'Socket Exception connecting to $_serverUrl', category: LogCategory.http, error: e);
       final isLocalLoopback = _serverUrl.contains('127.0.0.1');
       final tip = isLocalLoopback
           ? 'Notice: "127.0.0.1" refers to this mobile device itself, not your host computer. For a physical phone, please switch to your PC Wi-Fi IP (http://192.168.1.4:8001) or use the Cloudflare Tunnel.'

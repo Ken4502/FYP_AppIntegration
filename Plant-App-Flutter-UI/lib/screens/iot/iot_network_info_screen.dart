@@ -5,6 +5,7 @@ import '../../components/standard_app_bar.dart';
 import '../../constants.dart';
 import '../../models/iot_device_model.dart';
 import '../../services/iot_hybrid_connectivity_service.dart';
+import '../../services/iot_firestore_service.dart';
 import '../../services/ntfy_notification_service.dart';
 import 'iot_setup_wizard_screen.dart';
 
@@ -29,6 +30,7 @@ class IotNetworkInfoScreen extends StatefulWidget {
 
 class _IotNetworkInfoScreenState extends State<IotNetworkInfoScreen> {
   final IotHybridConnectivityService _service = IotHybridConnectivityService();
+  final IotFirestoreService _firestoreService = IotFirestoreService();
 
   bool _isPinging = false;
   String? _pingResult;
@@ -48,29 +50,30 @@ class _IotNetworkInfoScreenState extends State<IotNetworkInfoScreen> {
     });
 
     final sw = Stopwatch()..start();
-    final data = await _service.fetchLiveHardwareTelemetry();
+    final dev = await _firestoreService.getDevice(widget.device.id);
     sw.stop();
 
     if (!mounted) return;
 
+    final isOnline = dev != null && dev.isOnline;
     setState(() {
       _isPinging = false;
-      if (data != null) {
+      if (isOnline) {
         _currentLatency = sw.elapsedMilliseconds;
-        _pingResult = 'Online (${_currentLatency}ms response)';
+        _pingResult = 'Online (${_currentLatency}ms Cloud Sync)';
       } else {
-        _pingResult = 'Hardware timeout / offline';
+        _pingResult = 'Probe offline / Heartbeat standby';
       }
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          data != null
-              ? '✅ Ping Successful: ${_currentLatency}ms round-trip latency'
-              : '⚠️ Ping Failed: ESP32 did not respond on local station IP',
+          isOnline
+              ? '✅ Ping Successful: ${_currentLatency}ms round-trip to Cloud Firestore'
+              : '⚠️ Ping Alert: ESP32 heartbeat timed out (> 2 min without check-in)',
         ),
-        backgroundColor: data != null ? kPrimaryColor : kStatusDanger,
+        backgroundColor: isOnline ? kPrimaryColor : kStatusWarning,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
@@ -124,13 +127,14 @@ Device ID:        ${widget.device.id}
 Microcontroller:  ESP32-WROOM-32 (Xtensa 32-bit LX6 Dual-Core @ 240MHz)
 SRAM / Flash:     520 KB SRAM / 4 MB SPI Flash
 Firmware Build:   ${widget.device.firmwareVersion}
+Architecture:     Pure Cloud Firestore REST (HTTPS)
 Connected Wi-Fi:  $homeSsid
 Station IP (LAN): $stationIp
-SoftAP Gateway:   192.168.4.1
-Telemetry URL:    http://$stationIp/telemetry
-Water Pump URL:   http://$stationIp/pump?action=pulse
+Setup Hotspot:    ESP32_Plant_Irrigation (192.168.4.1)
+Telemetry Doc:    iot_devices/${widget.device.id}
+Command Channel:  Cloud Firestore (pendingCommand)
 Ping Latency:     ${_currentLatency > 0 ? "${_currentLatency}ms" : "Active"}
-Alert Broker:     ntfy.sh ($alertTopic)
+Alert Broker:     Firebase / ntfy.sh ($alertTopic)
 Main Host Phone:  Registered / Primary Dispatcher
 ========================================
 Generated on: ${DateTime.now().toLocal()}
@@ -407,26 +411,25 @@ Generated on: ${DateTime.now().toLocal()}
                       _buildDivider(),
                       _buildDetailItem(
                         icon: Icons.wifi_tethering_rounded,
-                        label: 'SoftAP Provisioning Gateway',
-                        value: '192.168.4.1 (SSID: Plant-IoT-Setup)',
-                        subtitle: 'Captive setup portal when disconnected from home Wi-Fi',
+                        label: 'SoftAP Setup Hotspot',
+                        value: '192.168.4.1 (SSID: ESP32_Plant_Irrigation)',
+                        subtitle: 'Active during initial 3-step setup or fallback recovery mode',
                         onCopy: () => _copyToClipboard('192.168.4.1', 'SoftAP Gateway IP'),
                       ),
                       _buildDivider(),
                       _buildDetailItem(
-                        icon: Icons.http_rounded,
-                        label: 'Live Telemetry REST Endpoint',
-                        value: 'http://$stationIp/telemetry',
-                        subtitle: 'Returns live JSON payload (moisture, raw ADC, pump, mode)',
-                        onCopy: () => _copyToClipboard('http://$stationIp/telemetry', 'Telemetry URL'),
+                        icon: Icons.cloud_sync_rounded,
+                        label: 'Cloud Telemetry Document',
+                        value: 'iot_devices/${widget.device.id}',
+                        subtitle: 'Continuous soil moisture, pump state, battery & mode via Firestore HTTPS',
+                        onCopy: () => _copyToClipboard('iot_devices/${widget.device.id}', 'Firestore Document Path'),
                       ),
                       _buildDivider(),
                       _buildDetailItem(
-                        icon: Icons.play_circle_outline_rounded,
-                        label: 'Remote Pump Activation Endpoint',
-                        value: 'http://$stationIp/pump?action=pulse',
-                        subtitle: 'Trigger a calibrated 3-second watering pulse via HTTP GET',
-                        onCopy: () => _copyToClipboard('http://$stationIp/pump?action=pulse', 'Pump Endpoint'),
+                        icon: Icons.bolt_rounded,
+                        label: 'Remote Command Queue',
+                        value: 'pendingCommand in Firestore (PULSE, FACTORY_RESET)',
+                        subtitle: 'Dispatches real-time watering pulses & reboots safely to ESP32',
                       ),
                       _buildDivider(),
                       _buildDetailItem(
@@ -459,9 +462,9 @@ Generated on: ${DateTime.now().toLocal()}
                       _buildDivider(),
                       _buildDetailItem(
                         icon: Icons.speed_rounded,
-                        label: 'Ping & Latency Status',
+                        label: 'Cloud Sync & Latency Status',
                         value: _pingResult ?? (_currentLatency > 0 ? 'Online (${_currentLatency}ms)' : 'Untested'),
-                        subtitle: 'Round-trip response time measured over local Wi-Fi link',
+                        subtitle: 'Round-trip response time measured to Cloud Firestore',
                       ),
                     ]),
                     const SizedBox(height: 20),

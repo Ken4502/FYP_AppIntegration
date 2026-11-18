@@ -47,6 +47,7 @@ class EditPlantScreenState extends State<EditPlantScreen> {
 
   void _saveChanges() {
     final parsedInterval = int.tryParse(_intervalController.text.trim()) ?? widget.plant.wateringIntervalDays;
+    final bool hasIot = widget.plant.hasIot;
     final updatedPlant = widget.plant.copyWith(
       name: _nameController.text.trim(),
       species: _speciesController.text.trim(),
@@ -54,7 +55,7 @@ class EditPlantScreenState extends State<EditPlantScreen> {
       environment: _environment,
       wateringIntervalDays: parsedInterval > 0 ? parsedInterval : widget.plant.wateringIntervalDays,
       reminderTime: _reminderTime,
-      reminderEnabled: _reminderEnabled,
+      reminderEnabled: hasIot ? false : _reminderEnabled,
     );
     Navigator.pop(context, updatedPlant);
   }
@@ -403,80 +404,171 @@ class EditPlantScreenState extends State<EditPlantScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Icon(Icons.alarm_rounded, color: kPrimaryColor, size: 20),
-                        SizedBox(width: 8),
-                        Text(
-                          'Watering Reminder & Interval',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary),
+                        Row(
+                          children: [
+                            Icon(
+                              widget.plant.hasIot ? Icons.sensors_rounded : Icons.alarm_rounded,
+                              color: kPrimaryColor,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              widget.plant.hasIot ? 'Hydration & Offline Watchdog' : 'Watering Reminder & Interval',
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary),
+                            ),
+                          ],
                         ),
+                        if (widget.plant.hasIot)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF16A34A).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'IOT MONITORED',
+                              style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF16A34A)),
+                            ),
+                          ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _intervalController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: "Watering Frequency (in days)",
-                        hintText: "e.g. 3, 5, 7, 14",
-                        prefixIcon: Icon(Icons.water_drop_outlined, size: 20),
-                        suffixText: "days",
+                    const SizedBox(height: 12),
+
+                    if (widget.plant.hasIot) ...[
+                      // IoT Telemetry Explanation Banner
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0FDF4),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFBBF7D0)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.info_outline_rounded, color: Color(0xFF16A34A), size: 18),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Active Probe: ${widget.plant.iotDeviceId}',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF166534)),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    'Soil moisture is measured continuously in real time. Dynamic hydration alerts fire automatically when moisture drops below ${_currentProfile.optimalMinMoisture}% (accounting for rain forecasts). Fixed daily calendar alarms are suppressed to avoid duplicate or conflicting alerts.',
+                                    style: const TextStyle(fontSize: 11, color: Color(0xFF15803D), height: 1.35),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () async {
-                        final time = await showTimePicker(
-                          context: context,
-                          initialTime: const TimeOfDay(hour: 9, minute: 0),
-                        );
-                        if (time != null) {
-                          final hr = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
-                          final min = time.minute.toString().padLeft(2, '0');
-                          final period = time.period == DayPeriod.am ? 'AM' : 'PM';
-                          setState(() {
-                            _reminderTime = '${hr.toString().padLeft(2, '0')}:$min $period';
-                          });
-                        }
-                      },
-                      child: Container(
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _intervalController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: "Baseline Cadence / Offline Watchdog (Days)",
+                          hintText: "e.g. 3, 5, 7",
+                          helperText: "Safety fallback: Used if IoT probe loses battery or goes offline.",
+                          helperMaxLines: 2,
+                          prefixIcon: Icon(Icons.shield_outlined, size: 20),
+                          suffixText: "days",
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                         decoration: BoxDecoration(
                           color: isDark ? kDarkSurfaceColor : kBackgroundColor,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        child: const Row(
                           children: [
+                            Icon(Icons.check_circle_rounded, size: 18, color: Color(0xFF16A34A)),
+                            SizedBox(width: 10),
                             Expanded(
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.access_time_rounded, size: 20, color: kPrimaryColor),
-                                  const SizedBox(width: 10),
-                                  Text(
-                                    _reminderTime,
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? kDarkTextPrimary : kTextPrimary),
-                                  ),
-                                ],
+                              child: Text(
+                                'Alerts Auto-Managed by IoT Telemetry',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF16A34A)),
                               ),
                             ),
-                            const Text('Change Time', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryColor)),
                           ],
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 14),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Enable Daily Reminder Alert', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kTextPrimary)),
-                      subtitle: const Text('Notify when plant is due for hydration', style: TextStyle(fontSize: 12, color: kTextSecondary)),
-                      value: _reminderEnabled,
-                      activeTrackColor: kPrimaryColor,
-                      onChanged: (val) => setState(() => _reminderEnabled = val),
-                    ),
+                    ] else ...[
+                      TextFormField(
+                        controller: _intervalController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: "Watering Frequency (in days)",
+                          hintText: "e.g. 3, 5, 7, 14",
+                          prefixIcon: Icon(Icons.water_drop_outlined, size: 20),
+                          suffixText: "days",
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () async {
+                          final time = await showTimePicker(
+                            context: context,
+                            initialTime: const TimeOfDay(hour: 9, minute: 0),
+                          );
+                          if (time != null) {
+                            final hr = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+                            final min = time.minute.toString().padLeft(2, '0');
+                            final period = time.period == DayPeriod.am ? 'AM' : 'PM';
+                            setState(() {
+                              _reminderTime = '${hr.toString().padLeft(2, '0')}:$min $period';
+                            });
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: isDark ? kDarkSurfaceColor : kBackgroundColor,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.access_time_rounded, size: 20, color: kPrimaryColor),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      _reminderTime,
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? kDarkTextPrimary : kTextPrimary),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Text('Change Time', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryColor)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Enable Daily Reminder Alert', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kTextPrimary)),
+                        subtitle: const Text('Notify when plant is due for hydration', style: TextStyle(fontSize: 12, color: kTextSecondary)),
+                        value: _reminderEnabled,
+                        activeTrackColor: kPrimaryColor,
+                        onChanged: (val) => setState(() => _reminderEnabled = val),
+                      ),
+                    ],
                   ],
                 ),
               ),

@@ -214,6 +214,31 @@ class IotFirestoreService {
     }, SetOptions(merge: true));
   }
 
+  /// Dispatches a remote FACTORY_RESET command to the ESP32 via Firestore pendingCommand.
+  /// When online, the ESP32 receives this command, wipes its Wi-Fi credentials in NVS,
+  /// and restarts cleanly into SoftAP mode (ESP32_Plant_Irrigation) for setup/reconfiguration.
+  Future<void> sendResetCommand(String deviceId) async {
+    final cmdId = 'cmd_reset_${DateTime.now().millisecondsSinceEpoch}';
+    await _devicesCol.doc(deviceId).set({
+      'pendingCommand': {
+        'command': 'FACTORY_RESET',
+        'commandId': cmdId,
+        'timestamp': FieldValue.serverTimestamp(),
+        'executed': false,
+      },
+      'systemState': 'FACTORY_RESETTING',
+      'stateReason': 'Reboot into setup mode requested for Wi-Fi reconfiguration',
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    await addDeviceLog(
+      deviceId,
+      title: 'Setup Mode Requested',
+      detail: 'ESP32 commanded to erase Wi-Fi and reboot into SoftAP setup mode (ESP32_Plant_Irrigation).',
+      type: IotLogType.system,
+    );
+  }
+
   /// Full Factory Reset & Wipe Cycle:
   /// Dispatches remote FACTORY_RESET command to ESP32 (if online) to wipe NVS preferences,
   /// then removes the device document from Cloud Firestore.

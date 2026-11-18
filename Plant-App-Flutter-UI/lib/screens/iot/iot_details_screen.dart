@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../components/standard_app_bar.dart';
 import '../../constants.dart';
-import '../../models/iot_connection_mode.dart';
 import '../../models/iot_device_model.dart';
 import '../../models/plant_model.dart';
 import '../../services/care_log_service.dart';
@@ -68,14 +67,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   bool _isTestingNotification = false;
 
   // Wi-Fi & Network Connection State
-  late TextEditingController _wifiSsidController;
-  late TextEditingController _wifiPassController;
-  bool _obscureWifiPass = true;
-  bool _isScanningWifi = false;
-  List<WifiNetwork> _nearbyWifiNetworks = [];
-  bool _isProvisioningWifi = false;
   bool _isResettingWifi = false;
-  bool _showWifiForm = false;
 
   // Hardware State Machine & Reconnect Tracking
   String? _systemState;
@@ -100,11 +92,6 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     _stateReason = widget.device.stateReason;
     _reconnectAttempts = widget.device.reconnectAttempts;
 
-    final initialSsid = widget.device.wifiSsid ?? _service.registeredHomeSsid ?? '';
-    _wifiSsidController = TextEditingController(text: initialSsid);
-    _wifiPassController = TextEditingController();
-    _showWifiForm = !widget.device.isWifiConnected || widget.device.wifiSsid == null || widget.device.wifiSsid!.isEmpty;
-
     _loadWeather();
     _subscribeFirestore();
     _startPolling();
@@ -121,8 +108,6 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     _deviceFirestoreSub?.cancel();
     _stopPolling();
     _stopwatchTimer?.cancel();
-    _wifiSsidController.dispose();
-    _wifiPassController.dispose();
     super.dispose();
   }
 
@@ -353,12 +338,136 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   }
 
   Future<void> _reconfigureWifi() async {
+    final bool isOnline = widget.device.isOnline;
+    if (isOnline) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Row(
+            children: [
+              Icon(Icons.wifi_protected_setup_rounded, color: kPrimaryColor, size: 24),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Change Wi-Fi Network',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'To switch your ESP32 to a different Wi-Fi network or mobile hotspot:\n\n'
+            '1. The app will send a remote command to reboot the ESP32 into Setup Mode (ESP32_Plant_Irrigation).\n'
+            '2. The 3-Step Setup Wizard will launch immediately to guide network pairing.\n\n'
+            '• Botanical logs, sensor calibrations, and linked specimen associations are kept safe.',
+            style: TextStyle(fontSize: 13, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel', style: TextStyle(color: kTextSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kPrimaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Reboot & Launch Wizard', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm != true || !mounted) return;
+
+      // Show brief rebooting overlay/progress
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(strokeWidth: 3, color: kPrimaryColor),
+                  SizedBox(height: 16),
+                  Text('Rebooting ESP32 into Setup Mode...', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  SizedBox(height: 4),
+                  Text('Broadcasting "ESP32_Plant_Irrigation"', style: TextStyle(fontSize: 11, color: kTextSecondary)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      try {
+        await _firestoreService.sendResetCommand(widget.device.id);
+        await Future.delayed(const Duration(milliseconds: 2000));
+      } catch (_) {}
+
+      if (mounted) Navigator.pop(context); // Close rebooting overlay
+    } else {
+      // Device is offline
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Row(
+            children: [
+              Icon(Icons.wifi_off_rounded, color: Color(0xFFD97706), size: 24),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'ESP32 Probe is Offline',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'The ESP32 is currently disconnected from Cloud Firestore and cannot receive remote commands.\n\n'
+            'How to switch Wi-Fi:\n'
+            '1. If disconnected recently, it is already broadcasting "ESP32_Plant_Irrigation".\n'
+            '2. Or press & hold the physical BOOT button on the ESP32 for 5 seconds until it restarts.\n'
+            '3. Tap "Launch Setup Wizard" to connect your phone to the hotspot and save new Wi-Fi credentials.',
+            style: TextStyle(fontSize: 13, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel', style: TextStyle(color: kTextSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD97706),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Launch Setup Wizard', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+
+      if (proceed != true || !mounted) return;
+    }
+
+    if (!mounted) return;
     final updated = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => IotSetupWizardScreen(initialDeviceId: widget.device.id),
       ),
     );
+
     if (updated == true && mounted) {
       final dev = await _firestoreService.getDevice(widget.device.id);
       if (dev != null && mounted) {
@@ -372,120 +481,27 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     }
   }
 
-  Future<void> _scanNearbyWifi() async {
-    setState(() => _isScanningWifi = true);
-    try {
-      final networks = await _service.scanNearbyWifiNetworks();
-      if (mounted) {
-        // Filter out already connected Wi-Fi, empty SSIDs, and deduplicate
-        final currentSsid = (widget.device.wifiSsid ?? _service.registeredHomeSsid ?? '').trim().toLowerCase();
-        final seen = <String>{};
-        final filtered = <WifiNetwork>[];
-
-        for (final net in networks) {
-          final clean = net.ssid.trim();
-          if (clean.isNotEmpty && clean.toLowerCase() != currentSsid && !seen.contains(clean.toLowerCase())) {
-            seen.add(clean.toLowerCase());
-            filtered.add(net);
-          }
-        }
-
-        setState(() {
-          _nearbyWifiNetworks = filtered;
-          _isScanningWifi = false;
-        });
-
-        if (filtered.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No other surrounding 2.4GHz Wi-Fi found. (For iPhone Hotspot, ensure "Maximize Compatibility" is ON in iOS Settings).'),
-              behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 4),
-            ),
-          );
-        }
-      }
-    } catch (_) {
-      if (mounted) setState(() => _isScanningWifi = false);
-    }
-  }
-
-  Future<void> _connectDeviceToWifi() async {
-    final ssid = _wifiSsidController.text.trim();
-    final pass = _wifiPassController.text.trim();
-
-    final validation = IotHybridConnectivityService.validateWifiCredentials(ssid, pass);
-    if (!validation.isSuccess) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(validation.message),
-          backgroundColor: kStatusDanger,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    setState(() => _isProvisioningWifi = true);
-
-    final res = await _service.provisionDeviceWifi(
-      deviceId: widget.device.id,
-      wifiSsid: ssid,
-      wifiPassword: pass,
-    );
-
-    if (mounted) {
-      setState(() {
-        _isProvisioningWifi = false;
-        if (res.isSuccess) {
-          widget.device.wifiSsid = ssid;
-          widget.device.isWifiConnected = true;
-          _showWifiForm = false;
-          _service.connectIotDevice(widget.device);
-        }
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(res.message),
-          backgroundColor: res.isSuccess ? kStatusSuccess : kStatusDanger,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
-        ),
-      );
-
-      if (res.isSuccess) {
-        _startPolling();
-      }
-    }
-  }
-
-  Future<void> _removeWifiNetwork({bool andReAdd = false}) async {
+  Future<void> _disconnectWifi() async {
     final currentSsid = widget.device.wifiSsid ?? _service.registeredHomeSsid ?? 'configured network';
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Row(
+        title: const Row(
           children: [
-            Icon(
-              andReAdd ? Icons.wifi_protected_setup_rounded : Icons.delete_outline_rounded,
-              color: andReAdd ? kPrimaryColor : const Color(0xFFDC2626),
-              size: 24,
-            ),
-            const SizedBox(width: 10),
+            Icon(Icons.wifi_off_rounded, color: Color(0xFFDC2626), size: 24),
+            SizedBox(width: 10),
             Expanded(
               child: Text(
-                andReAdd ? 'Delete & Reconfigure Wi-Fi?' : 'Delete Wi-Fi Network?',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                'Disconnect from Wi-Fi?',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ],
         ),
         content: Text(
-          andReAdd
-              ? 'This will delete "$currentSsid" from the ESP32 first so its 2.4GHz radio is completely unencumbered to scan and connect to your new Wi-Fi or Hotspot.'
-              : 'Are you sure you want to delete and forget the Wi-Fi network "$currentSsid"? The ESP32 will disconnect, return to standalone SoftAP mode ("ESP32-Setup" at 192.168.4.1), and you will return to the IoT Devices screen.',
+          'Are you sure you want to disconnect and forget "$currentSsid"?\n\n'
+          'The ESP32 will disconnect from the local network, erase Wi-Fi credentials in flash memory, and restart in standalone setup mode (ESP32_Plant_Irrigation).',
           style: const TextStyle(fontSize: 13, color: kTextPrimary, height: 1.4),
         ),
         actions: [
@@ -495,12 +511,12 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: andReAdd ? kPrimaryColor : const Color(0xFFDC2626),
+              backgroundColor: const Color(0xFFDC2626),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(andReAdd ? 'Delete & Reconfigure' : 'Delete Wi-Fi', style: const TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text('Disconnect Wi-Fi', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -511,47 +527,34 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     setState(() => _isResettingWifi = true);
 
     try {
-      final res = await _service.resetDeviceWifi(widget.device.id);
-      if (!mounted) return;
+      if (widget.device.isOnline) {
+        await _firestoreService.sendResetCommand(widget.device.id);
+        await Future.delayed(const Duration(milliseconds: 1000));
+      }
+      await _service.resetDeviceWifi(widget.device.id);
 
+      if (!mounted) return;
       setState(() {
         _isResettingWifi = false;
         widget.device.isWifiConnected = false;
         widget.device.wifiSsid = null;
-        _wifiSsidController.clear();
-        _wifiPassController.clear();
-        _nearbyWifiNetworks = [];
-        _showWifiForm = andReAdd;
       });
 
-      _service.connectIotDevice(widget.device);
-
-      if (andReAdd) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Previous Wi-Fi deleted! Scanning for surrounding 2.4GHz networks...'),
-            behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 4),
-          ),
-        );
-        _scanNearbyWifi();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(res.message.isNotEmpty ? res.message : 'Wi-Fi network deleted from ESP32.'),
-            backgroundColor: kPrimaryColor,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-        Navigator.pop(context, true); // Go back to main IoT page as requested
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Wi-Fi disconnected. ESP32 is now in standalone setup mode.'),
+          backgroundColor: kPrimaryColor,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
         setState(() => _isResettingWifi = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to delete Wi-Fi: $e'),
+            content: Text('Failed to disconnect Wi-Fi: $e'),
             backgroundColor: kStatusDanger,
             behavior: SnackBarBehavior.floating,
           ),
@@ -1229,13 +1232,15 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                   Divider(height: 16, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                   _buildConfigRow(Icons.developer_board_rounded, 'Device Model', 'ESP32-WROOM-32 (Xtensa Dual-Core)'),
                   Divider(height: 14, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+                  _buildConfigRow(Icons.cloud_done_rounded, 'Architecture', 'Pure Cloud Firestore (HTTPS)'),
+                  Divider(height: 14, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                   _buildConfigRow(Icons.memory_rounded, 'Firmware Version', widget.device.firmwareVersion),
                   Divider(height: 14, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                   _buildConfigRow(Icons.wifi_rounded, 'Connected Wi-Fi', homeSsid),
                   Divider(height: 14, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
-                  _buildConfigRow(Icons.router_rounded, 'Station IP (Home LAN)', stationIp),
+                  _buildConfigRow(Icons.router_rounded, 'Station IP (Home LAN)', stationIp.isNotEmpty ? stationIp : 'DHCP Dynamic'),
                   Divider(height: 14, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
-                  _buildConfigRow(Icons.wifi_tethering_rounded, 'SoftAP Gateway', '192.168.4.1'),
+                  _buildConfigRow(Icons.wifi_tethering_rounded, 'SoftAP Setup Hotspot', 'ESP32_Plant_Irrigation (192.168.4.1)'),
                   Divider(height: 14, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
                   _buildConfigRow(
                     Icons.speed_rounded,
@@ -1344,9 +1349,10 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     );
   }
 
-  /// Connect IoT to Network & Wi-Fi Configuration Card inside Device Details
+  /// Network & Cloud Connectivity Card inside Device Details
   Widget _buildNetworkConnectionCard(String stationIp, String homeSsid) {
     final isDark = context.isDarkMode;
+    final bool isOnline = widget.device.isOnline;
     final bool hasWifi = widget.device.isWifiConnected &&
         widget.device.wifiSsid != null &&
         widget.device.wifiSsid!.isNotEmpty;
@@ -1357,7 +1363,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
         color: isDark ? kDarkCardColor : kSurfaceColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: hasWifi
+          color: isOnline
               ? (isDark ? kDarkBorderSubtle : kBorderSubtle)
               : (isDark ? const Color(0xFF78350F) : const Color(0xFFFDE68A)),
         ),
@@ -1378,12 +1384,12 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: (hasWifi ? kPrimaryColor : const Color(0xFFD97706)).withValues(alpha: 0.12),
+                  color: (isOnline ? kPrimaryColor : const Color(0xFFD97706)).withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  hasWifi ? Icons.wifi_rounded : Icons.wifi_off_rounded,
-                  color: hasWifi ? kPrimaryColor : const Color(0xFFD97706),
+                  isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                  color: isOnline ? kPrimaryColor : const Color(0xFFD97706),
                   size: 22,
                 ),
               ),
@@ -1396,7 +1402,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                       children: [
                         const Flexible(
                           child: Text(
-                            'Connect IoT to Network',
+                            'Network & Cloud Connectivity',
                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kTextPrimary),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -1405,11 +1411,11 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: hasWifi ? kStatusSuccess : const Color(0xFFD97706),
+                            color: isOnline ? kStatusSuccess : const Color(0xFFD97706),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            hasWifi ? 'CONNECTED' : 'SETUP REQUIRED',
+                            isOnline ? 'CLOUD SYNC' : 'OFFLINE',
                             style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
                           ),
                         ),
@@ -1418,8 +1424,8 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                     const SizedBox(height: 2),
                     Text(
                       hasWifi
-                          ? 'Linked to "$homeSsid" at $stationIp'
-                          : 'Probe is in SoftAP setup mode (192.168.4.1)',
+                          ? 'Paired to 2.4GHz Wi-Fi "$homeSsid"'
+                          : 'No active Wi-Fi connection configured',
                       style: const TextStyle(fontSize: 11, color: kTextSecondary),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1435,263 +1441,149 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
           ),
           const SizedBox(height: 14),
 
-          // If connected, show status strip with reconfigure toggle & surrounding networks scan
-          if (hasWifi && !_showWifiForm) ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0FDF4),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFBBF7D0)),
+          // Network & Cloud Status Strip
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isOnline
+                  ? (isDark ? const Color(0xFF064E3B).withValues(alpha: 0.25) : const Color(0xFFF0FDF4))
+                  : (isDark ? const Color(0xFF78350F).withValues(alpha: 0.25) : const Color(0xFFFFFBEB)),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isOnline
+                    ? (isDark ? const Color(0xFF047857) : const Color(0xFFBBF7D0))
+                    : (isDark ? const Color(0xFF92400E) : const Color(0xFFFDE68A)),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.check_circle_rounded, color: kStatusSuccess, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Direct LAN link active on "$homeSsid"',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF166534)),
-                          overflow: TextOverflow.ellipsis,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      isOnline ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+                      color: isOnline ? kStatusSuccess : const Color(0xFFD97706),
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isOnline
+                            ? 'Cloud Firestore Link Active (HTTPS)'
+                            : 'Cloud link standby • Probe offline',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: isOnline
+                              ? (isDark ? const Color(0xFF6EE7B7) : const Color(0xFF166534))
+                              : (isDark ? const Color(0xFFFCD34D) : const Color(0xFF92400E)),
                         ),
+                        overflow: TextOverflow.ellipsis,
                       ),
+                    ),
+                    if (isOnline)
                       Text(
                         '${_latencyMs}ms',
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF166534)),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF166534),
+                        ),
                       ),
-                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  hasWifi
+                      ? 'Network: $homeSsid • IP: $stationIp'
+                      : 'Setup Hotspot: ESP32_Plant_Irrigation (192.168.4.1)',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isOnline
+                        ? (isDark ? const Color(0xFFA7F3D0) : const Color(0xFF15803D))
+                        : (isDark ? const Color(0xFFFDE68A) : const Color(0xFFB45309)),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Assigned Station IP: $stationIp • Gateway: 192.168.4.1',
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF15803D)),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
-            // Information notice regarding single radio channel
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.blue.shade100),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline_rounded, size: 16, color: Colors.blue.shade800),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'To switch to another Wi-Fi or mobile hotspot, remove this network first so the ESP32 radio can scan cleanly without frequency disruption.',
-                      style: TextStyle(fontSize: 10.5, color: Colors.blue.shade900, height: 1.3),
+          ),
+          const SizedBox(height: 10),
+
+          // Information notice regarding single radio channel & 2.4GHz
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50.withValues(alpha: isDark ? 0.15 : 0.6),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.blue.shade200.withValues(alpha: isDark ? 0.3 : 1.0)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline_rounded, size: 16, color: isDark ? Colors.blue.shade300 : Colors.blue.shade800),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'To switch to another Wi-Fi or phone hotspot, tap Change Wi-Fi below. The ESP32 will reboot into its setup hotspot ("ESP32_Plant_Irrigation") and open the 3-step setup wizard.',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
+                      height: 1.3,
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
+          ),
+          const SizedBox(height: 12),
+
+          // Action Buttons: Change Wi-Fi & Disconnect Wi-Fi
+          Row(
+            children: [
+              if (hasWifi) ...[
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _isResettingWifi ? null : () => _removeWifiNetwork(andReAdd: false),
-                    icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                    onPressed: _isResettingWifi ? null : _disconnectWifi,
+                    icon: const Icon(Icons.wifi_off_rounded, size: 16),
                     label: const FittedBox(
                       fit: BoxFit.scaleDown,
                       child: Text(
-                        'Delete Wi-Fi',
+                        'Disconnect Wi-Fi',
                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                       ),
                     ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFFDC2626),
                       side: const BorderSide(color: Color(0xFFFCA5A5)),
-                      padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 8),
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _reconfigureWifi,
-                    icon: const Icon(Icons.wifi_protected_setup_rounded, size: 16),
-                    label: const FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        'Change Wi-Fi (3-Step Setup)',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                      ),
+              ],
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _reconfigureWifi,
+                  icon: const Icon(Icons.wifi_protected_setup_rounded, size: 16),
+                  label: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      hasWifi ? 'Change Wi-Fi Network' : 'Connect to Wi-Fi Wizard',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: kPrimaryColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 8),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kPrimaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
-              ],
-            ),
-          ] else ...[
-            // Wi-Fi Setup / Connection Form
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: isDark ? kDarkSurfaceColor : kBackgroundColor,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Wi-Fi Network Credentials',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? kDarkTextPrimary : kTextPrimary,
-                        ),
-                      ),
-                      if (hasWifi)
-                        InkWell(
-                          onTap: () => setState(() => _showWifiForm = false),
-                          child: Text(
-                            'Cancel',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: isDark ? kDarkTextSecondary : kTextSecondary,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-
-                  // Scan Nearby Networks Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _isScanningWifi ? null : _scanNearbyWifi,
-                      icon: _isScanningWifi
-                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.wifi_find_rounded, size: 16),
-                      label: Text(_isScanningWifi ? 'Scanning 2.4GHz Networks...' : 'Scan Nearby 2.4GHz Wi-Fi'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: kPrimaryColor,
-                        side: const BorderSide(color: kPrimaryColor),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                  ),
-
-                  // Scanned Chips
-                  if (_nearbyWifiNetworks.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: _nearbyWifiNetworks.take(6).map((net) {
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: ActionChip(
-                              label: Text(net.ssid, style: const TextStyle(fontSize: 11)),
-                              backgroundColor: Theme.of(context).brightness == Brightness.dark ? kDarkCardColor : Colors.white,
-                              side: BorderSide(color: Theme.of(context).brightness == Brightness.dark ? kDarkBorderSubtle : Colors.grey.shade300),
-                              onPressed: () {
-                                setState(() {
-                                  _wifiSsidController.text = net.ssid;
-                                });
-                              },
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 10),
-
-                  // SSID Field
-                  TextField(
-                    controller: _wifiSsidController,
-                    decoration: InputDecoration(
-                      labelText: 'Home Wi-Fi Name (SSID)',
-                      hintText: 'e.g. MyHome-2.4G',
-                      prefixIcon: const Icon(Icons.wifi_rounded, size: 18),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-
-                  // Password Field
-                  TextField(
-                    controller: _wifiPassController,
-                    obscureText: _obscureWifiPass,
-                    decoration: InputDecoration(
-                      labelText: 'Wi-Fi Password',
-                      hintText: 'WPA2/WPA3 Password (min 8 chars)',
-                      prefixIcon: const Icon(Icons.lock_outline_rounded, size: 18),
-                      suffixIcon: IconButton(
-                        icon: Icon(_obscureWifiPass ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
-                        onPressed: () => setState(() => _obscureWifiPass = !_obscureWifiPass),
-                      ),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    '⚠️ Note: ESP32 microcontrollers only connect to 2.4GHz Wi-Fi bands (not 5GHz).',
-                    style: TextStyle(fontSize: 10, color: Color(0xFFB45309)),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Connect Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _isProvisioningWifi ? null : _connectDeviceToWifi,
-                      icon: _isProvisioningWifi
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.send_rounded, size: 16),
-                      label: Text(
-                        _isProvisioningWifi ? 'Connecting ESP32 to Wi-Fi...' : 'Connect IoT to Network',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: kPrimaryColor,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 0,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Center(
-                    child: TextButton(
-                      onPressed: _reconfigureWifi,
-                      child: const Text('Prefer step-by-step guidance? Open Setup Wizard ➔', style: TextStyle(fontSize: 11, color: kPrimaryColor)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ],
       ),
     );

@@ -318,10 +318,16 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
       });
     });
 
+    // Ensure device document is created in Firestore under user ownership as soon as Step 2 begins!
+    _provisioningService.createOrEnsureDeviceRecord(
+      deviceId: deviceId,
+      ssid: ssid,
+    );
+
     _provisioningService.verifyConnectionInCloud(
       setupToken: setupToken,
       deviceId: deviceId,
-      timeout: const Duration(seconds: 20),
+      timeout: const Duration(seconds: 25),
     ).then((result) {
       _countdownTimer?.cancel();
       if (!mounted) return;
