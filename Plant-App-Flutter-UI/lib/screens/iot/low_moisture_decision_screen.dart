@@ -46,18 +46,20 @@ class _LowMoistureDecisionScreenState extends State<LowMoistureDecisionScreen> {
 
   Color get _moistureStatusColor {
     final pct = _currentMoisturePct;
-    if (pct < 20) return Colors.red.shade700;
-    if (pct < 30) return Colors.orange.shade800;
-    if (pct < 45) return Colors.amber.shade800;
-    return const Color(0xFF2E7D32);
+    if (pct < _plant.criticalMinMoisture) return Colors.red.shade700;
+    if (pct < _plant.optimalMinMoisture) return Colors.amber.shade800;
+    if (pct <= _plant.optimalMaxMoisture) return const Color(0xFF2E7D32);
+    if (pct <= _plant.overwaterMaxMoisture) return const Color(0xFF0284C7);
+    return Colors.red.shade900;
   }
 
   String get _moistureStatusText {
     final pct = _currentMoisturePct;
-    if (pct < 15) return 'Critically Depleted ⚠️';
-    if (pct < 25) return 'Dry Soil • Hydration Urgently Due ⚠️';
-    if (pct < 35) return 'Moisture Low • Below Optimal Range';
-    return 'Moisture Level Recovering';
+    if (pct < _plant.criticalMinMoisture) return 'Critically Depleted • Wilting Risk ⚠️';
+    if (pct < _plant.optimalMinMoisture) return 'Low Moisture • Nearing Dry Side';
+    if (pct <= _plant.optimalMaxMoisture) return 'Optimal Hydration Balance';
+    if (pct <= _plant.overwaterMaxMoisture) return 'Well Hydrated / Moist';
+    return 'Overwatered / Saturated ⚠️';
   }
 
   Future<void> _handleWaterPlant() async {

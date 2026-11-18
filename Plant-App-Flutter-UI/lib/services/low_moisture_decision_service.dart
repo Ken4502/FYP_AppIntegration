@@ -5,6 +5,7 @@ import 'package:urbangreen/models/plant_model.dart';
 import 'package:urbangreen/screens/iot/low_moisture_decision_screen.dart';
 import 'package:urbangreen/services/iot_hybrid_connectivity_service.dart';
 import 'package:urbangreen/services/plant_service.dart';
+import 'package:urbangreen/services/weather_service.dart';
 import 'package:urbangreen/services/platform/web_hardware_bridge.dart';
 
 class LowMoistureAlertEvent {
@@ -119,20 +120,7 @@ class LowMoistureDecisionService {
       return;
     }
 
-    // 2. Check threshold
-    if (currentMoisture >= device.lowMoistureThreshold && !force) {
-      return;
-    }
-
-    // 3. Cooldown check (prevent notification spam within 15 mins unless forced)
-    final now = DateTime.now();
-    final lastTime = _lastAlertTimes[device.id];
-    if (!force && lastTime != null && now.difference(lastTime).inMinutes < 15) {
-      return;
-    }
-    _lastAlertTimes[device.id] = now;
-
-    // 4. Resolve associated plant
+    // 2. Resolve associated plant & species calibration
     final plantService = PlantService();
     Plant? plant;
     final matches = plantService.myPlants.where((p) => p.iotDeviceId == device.id);
@@ -150,18 +138,97 @@ class LowMoistureDecisionService {
       iotDeviceId: device.id,
     );
 
-    final plantName = plant.name;
-    final threshold = device.lowMoistureThreshold;
+    final int critMin = plant.criticalMinMoisture;
+    final int optMin = plant.optimalMinMoisture;
+    final int overwaterMax = plant.overwaterMaxMoisture;
+    final String plantName = plant.name;
 
-    // 5. Fire native heads-up system notification (sound & banner)
+    // Check weather forecast for outdoor plant
+    final weather = WeatherService().currentWeather;
+    final bool isOutdoor = plant.isOutdoor;
+    final bool willRainToday = isOutdoor && (weather?.isRainGuardActive ?? false);
+
+    // CASE A: OVERWATERED ALERT (Soil saturated beyond maximum safe threshold)
+    if (currentMoisture > overwaterMax) {
+      final now = DateTime.now();
+      final lastTime = _lastAlertTimes['${device.id}_overwater'];
+      if (!force && lastTime != null && now.difference(lastTime).inMinutes < 15) {
+        return;
+      }
+      _lastAlertTimes['${device.id}_overwater'] = now;
+
+      await WebHardwareBridge.showNativeNotification(
+        title: '⚠️ Overwater Warning: $plantName',
+        body: 'Soil moisture is saturated at $currentMoisture% (exceeds $overwaterMax% limit). Risk of root rot. Cease watering and ensure drainage.',
+        deviceId: device.id,
+        plantId: plant.id,
+      );
+
+      final event = LowMoistureAlertEvent(
+        device: device,
+        plant: plant,
+        moisture: currentMoisture,
+      );
+      activeAlertNotifier.value = event;
+      return;
+    }
+
+    // CASE B: OUTDOOR PLANT + RAIN EXPECTED TODAY
+    // "if it is outdoor, if it will rain today, only ensure the soil is at bare minimum moisture to maintain the plant"
+    // "if it is going to rain today, only alert user when it is absolutely below minimum level"
+    if (willRainToday) {
+      if (currentMoisture >= critMin && !force) {
+        // Soil is above critical wilting point, and rain will naturally hydrate it today!
+        return;
+      }
+
+      // Soil is strictly below critical minimum: Emergency wilting alert!
+      final now = DateTime.now();
+      final lastTime = _lastAlertTimes[device.id];
+      if (!force && lastTime != null && now.difference(lastTime).inMinutes < 15) {
+        return;
+      }
+      _lastAlertTimes[device.id] = now;
+
+      await WebHardwareBridge.showNativeNotification(
+        title: '🚨 Critical Drought Alert: $plantName',
+        body: 'Soil moisture is down to $currentMoisture% (below survival threshold $critMin%). Rain is expected today, but an emergency pulse is needed to protect root viability.',
+        deviceId: device.id,
+        plantId: plant.id,
+      );
+
+      final event = LowMoistureAlertEvent(
+        device: device,
+        plant: plant,
+        moisture: currentMoisture,
+      );
+      activeAlertNotifier.value = event;
+      return;
+    }
+
+    // CASE C: INDOOR PLANT OR NO RAIN TODAY
+    // "if it is not going to rain or the plant is indoor, tell user when it is nearing the dryer side of the spectrum"
+    final int lowThreshold = optMin;
+    if (currentMoisture >= lowThreshold && !force) {
+      return;
+    }
+
+    final now = DateTime.now();
+    final lastTime = _lastAlertTimes[device.id];
+    if (!force && lastTime != null && now.difference(lastTime).inMinutes < 15) {
+      return;
+    }
+    _lastAlertTimes[device.id] = now;
+
+    // Fire native heads-up system notification (sound & banner)
     await WebHardwareBridge.showNativeNotification(
-      title: '⚠️ Low Soil Moisture Alert: $plantName',
-      body: 'Soil moisture is down to $currentMoisture% (Threshold: $threshold%). Tap to decide whether to water or ignore.',
+      title: '💧 Soil Running Low: $plantName',
+      body: 'Soil moisture is at $currentMoisture% (nearing dry threshold $lowThreshold%). Tap to decide whether to water or snooze.',
       deviceId: device.id,
       plantId: plant.id,
     );
 
-    // 6. Broadcast event for in-app floating banner
+    // Broadcast event for in-app floating banner
     final event = LowMoistureAlertEvent(
       device: device,
       plant: plant,

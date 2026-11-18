@@ -21,6 +21,15 @@ class Plant {
   final String soilType;
   final String? careNotes;
 
+  // Environment & Microclimate ('indoor' | 'outdoor')
+  final String environment;
+
+  // Optional manual moisture overrides (falls back to calibrated speciesProfile if null)
+  final int? customCriticalMinMoisture;
+  final int? customOptimalMinMoisture;
+  final int? customOptimalMaxMoisture;
+  final int? customOverwaterMaxMoisture;
+
   Plant({
     required this.id,
     required this.name,
@@ -28,6 +37,11 @@ class Plant {
     required this.imageUrl,
     this.description = "",
     this.iotDeviceId,
+    this.environment = "indoor",
+    this.customCriticalMinMoisture,
+    this.customOptimalMinMoisture,
+    this.customOptimalMaxMoisture,
+    this.customOverwaterMaxMoisture,
     int? wateringIntervalDays,
     this.lastWatered,
     this.reminderTime = "09:00 AM",
@@ -44,6 +58,19 @@ class Plant {
         idealTemperature = idealTemperature ?? _defaultTemperatureForSpecies(species),
         petToxicity = petToxicity ?? _defaultToxicityForSpecies(species),
         soilType = soilType ?? _defaultSoilForSpecies(species);
+
+  /// Environment helpers
+  bool get isIndoor => environment.toLowerCase() != 'outdoor';
+  bool get isOutdoor => !isIndoor;
+
+  /// Botanical species profile calibration
+  PlantSpeciesProfile get speciesProfile => PlantSpeciesProfile.resolveForSpecies(species);
+
+  /// Calibrated 4-tier moisture spectrum thresholds (%)
+  int get criticalMinMoisture => customCriticalMinMoisture ?? speciesProfile.criticalMinMoisture;
+  int get optimalMinMoisture => customOptimalMinMoisture ?? speciesProfile.optimalMinMoisture;
+  int get optimalMaxMoisture => customOptimalMaxMoisture ?? speciesProfile.optimalMaxMoisture;
+  int get overwaterMaxMoisture => customOverwaterMaxMoisture ?? speciesProfile.overwaterMaxMoisture;
 
   /// Whether this plant is actively connected to an IoT telemetry probe
   bool get hasIot => iotDeviceId != null && iotDeviceId!.trim().isNotEmpty;
@@ -128,6 +155,11 @@ class Plant {
     String? description,
     String? iotDeviceId,
     bool clearIotDevice = false,
+    String? environment,
+    int? customCriticalMinMoisture,
+    int? customOptimalMinMoisture,
+    int? customOptimalMaxMoisture,
+    int? customOverwaterMaxMoisture,
     int? wateringIntervalDays,
     DateTime? lastWatered,
     String? reminderTime,
@@ -146,6 +178,11 @@ class Plant {
       imageUrl: imageUrl ?? this.imageUrl,
       description: description ?? this.description,
       iotDeviceId: clearIotDevice ? null : (iotDeviceId ?? this.iotDeviceId),
+      environment: environment ?? this.environment,
+      customCriticalMinMoisture: customCriticalMinMoisture ?? this.customCriticalMinMoisture,
+      customOptimalMinMoisture: customOptimalMinMoisture ?? this.customOptimalMinMoisture,
+      customOptimalMaxMoisture: customOptimalMaxMoisture ?? this.customOptimalMaxMoisture,
+      customOverwaterMaxMoisture: customOverwaterMaxMoisture ?? this.customOverwaterMaxMoisture,
       wateringIntervalDays: wateringIntervalDays ?? this.wateringIntervalDays,
       lastWatered: lastWatered ?? this.lastWatered,
       reminderTime: reminderTime ?? this.reminderTime,
@@ -166,6 +203,15 @@ class Plant {
     'imageUrl': imageUrl,
     'description': description,
     'iotDeviceId': iotDeviceId,
+    'environment': environment,
+    'customCriticalMinMoisture': customCriticalMinMoisture,
+    'customOptimalMinMoisture': customOptimalMinMoisture,
+    'customOptimalMaxMoisture': customOptimalMaxMoisture,
+    'customOverwaterMaxMoisture': customOverwaterMaxMoisture,
+    'criticalMinMoisture': criticalMinMoisture,
+    'optimalMinMoisture': optimalMinMoisture,
+    'optimalMaxMoisture': optimalMaxMoisture,
+    'overwaterMaxMoisture': overwaterMaxMoisture,
     'wateringIntervalDays': wateringIntervalDays,
     'lastWatered': lastWatered?.toIso8601String(),
     'reminderTime': reminderTime,
@@ -187,6 +233,11 @@ class Plant {
       imageUrl: json['imageUrl']?.toString() ?? '',
       description: json['description']?.toString() ?? '',
       iotDeviceId: json['iotDeviceId']?.toString(),
+      environment: json['environment']?.toString() ?? 'indoor',
+      customCriticalMinMoisture: json['customCriticalMinMoisture'] as int?,
+      customOptimalMinMoisture: json['customOptimalMinMoisture'] as int?,
+      customOptimalMaxMoisture: json['customOptimalMaxMoisture'] as int?,
+      customOverwaterMaxMoisture: json['customOverwaterMaxMoisture'] as int?,
       wateringIntervalDays: json['wateringIntervalDays'] is int
           ? json['wateringIntervalDays'] as int
           : (int.tryParse(json['wateringIntervalDays']?.toString() ?? '') ?? _defaultIntervalForSpecies(species)),

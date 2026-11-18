@@ -6,6 +6,7 @@ import '../../constants.dart';
 import '../../models/iot_connection_mode.dart';
 import '../../models/iot_device_model.dart';
 import '../../models/plant_model.dart';
+import '../../services/care_log_service.dart';
 import '../../services/iot_hybrid_connectivity_service.dart';
 import '../../services/iot_firestore_service.dart';
 import '../../services/weather_service.dart';
@@ -16,6 +17,7 @@ import 'iot_network_info_screen.dart';
 import 'iot_setup_wizard_screen.dart';
 import '../../components/iot_connection_guide_sheet.dart';
 import '../../components/city_picker_sheet.dart';
+import '../garden/edit_plant_screen.dart';
 
 class IotDetailsScreen extends StatefulWidget {
   final IotDevice device;
@@ -610,6 +612,76 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
         ),
       );
     }
+  }
+
+  void _togglePlantEnvironment(Plant plant) {
+    final nextEnv = plant.isIndoor ? 'outdoor' : 'indoor';
+    final updated = plant.copyWith(environment: nextEnv);
+    _plantService.updatePlant(updated);
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(nextEnv == 'indoor'
+            ? '🏠 Set ${plant.name} to Indoor (RainGuard bypassed)'
+            : '🌿 Set ${plant.name} to Outdoor (RainGuard active)'),
+        backgroundColor: kStatusSuccess,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _startSmartHydrateWorkflow(Plant? plant) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _SmartHydrateModal(
+        device: widget.device,
+        plant: plant,
+        currentMoisture: _moisturePercent,
+        firestoreService: _firestoreService,
+        onMoistureUpdated: (newM) {
+          if (mounted) {
+            setState(() {
+              _moisturePercent = newM;
+              _moistureHistory.add(newM);
+              if (_moistureHistory.length > _maxHistoryPoints) {
+                _moistureHistory.removeAt(0);
+              }
+            });
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildMiniSpectrumIndicator(String label, String range, Color color) {
+    return Expanded(
+      child: Column(
+        children: [
+          Container(
+            height: 6,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            range,
+            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: color),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 8, color: Colors.grey),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -2064,37 +2136,67 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
             ),
           ],
 
-          // Quick Watering Actions
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.water_drop_outlined, size: 16),
-                  label: const Text('Quick Water (3s)'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kPrimaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          // Dual Watering Controls: Smart Hydrate vs Quick Water (3s)
+          Builder(
+            builder: (ctx) {
+              final Plant? assignedPlant = _plantService.getPlantForDevice(widget.device.id);
+              final int targetOptimal = assignedPlant?.optimalMaxMoisture ?? 65;
+
+              return Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                      label: Text(
+                        'Smart Hydrate to Optimal ($targetOptimal%)',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kPrimaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 1,
+                      ),
+                      onPressed: () => _startSmartHydrateWorkflow(assignedPlant),
+                    ),
                   ),
-                  onPressed: _triggerWaterPulse,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: Icon(_isPumpRunning ? Icons.stop_rounded : Icons.play_arrow_rounded, size: 16),
-                  label: Text(_isPumpRunning ? 'Stop Pump' : 'Start Pump'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _isPumpRunning ? kStatusDanger : kPrimaryColor,
-                    side: BorderSide(color: _isPumpRunning ? kStatusDanger : kPrimaryColor),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.water_drop_outlined, size: 16),
+                          label: const Text('Quick Water (3s)'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: kPrimaryColor,
+                            side: const BorderSide(color: kPrimaryColor),
+                            padding: const EdgeInsets.symmetric(vertical: 11),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: _triggerWaterPulse,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: Icon(_isPumpRunning ? Icons.stop_rounded : Icons.play_arrow_rounded, size: 16),
+                          label: Text(_isPumpRunning ? 'Stop Pump' : 'Manual Override'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _isPumpRunning ? kStatusDanger : Colors.grey.shade700,
+                            side: BorderSide(color: _isPumpRunning ? kStatusDanger : Colors.grey.shade400),
+                            padding: const EdgeInsets.symmetric(vertical: 11),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: _togglePumpState,
+                        ),
+                      ),
+                    ],
                   ),
-                  onPressed: _togglePumpState,
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -2311,9 +2413,44 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     if (weather == null) return const SizedBox.shrink();
 
     final isRainGuard = weather.isRainGuardActive;
-    final guardBg = isRainGuard ? const Color(0xFFEFF6FF) : const Color(0xFFF0FDF4);
-    final guardBorder = isRainGuard ? const Color(0xFFBFDBFE) : const Color(0xFFBBF7D0);
-    final guardTextColor = isRainGuard ? const Color(0xFF1D4ED8) : const Color(0xFF15803D);
+    final Plant? assignedPlant = _plantService.getPlantForDevice(widget.device.id);
+    final bool isIndoor = assignedPlant?.isIndoor ?? false;
+    final int critMin = assignedPlant?.criticalMinMoisture ?? 15;
+
+    // Environment & RainGuard Resolution
+    String guardMessage;
+    Color guardBgColor;
+    Color guardBorderColor;
+    Color guardTextCol;
+    IconData guardIcon;
+
+    if (isIndoor) {
+      guardMessage = '🏠 Indoor Specimen • RainGuard Bypassed\nSheltered from precipitation. Hydration decisions rely strictly on soil sensor telemetry.';
+      guardBgColor = isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
+      guardBorderColor = isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1);
+      guardTextCol = isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
+      guardIcon = Icons.home_rounded;
+    } else if (isRainGuard) {
+      if (_moisturePercent < critMin) {
+        guardMessage = '🚨 Rain Expected Today • Critical Wilting Warning\nSoil is critically dry ($_moisturePercent% < $critMin%). A survival pulse is advised before rain arrives.';
+        guardBgColor = isDark ? const Color(0xFF451A03) : const Color(0xFFFEF3C7);
+        guardBorderColor = isDark ? const Color(0xFF78350F) : const Color(0xFFFDE68A);
+        guardTextCol = isDark ? const Color(0xFFFBBF24) : const Color(0xFFB45309);
+        guardIcon = Icons.warning_amber_rounded;
+      } else {
+        guardMessage = '🌧️ Rain Expected Today • Outdoor Irrigation Paused\nSoil moisture ($_moisturePercent%) is above critical survival minimum ($critMin%). Watering held to let rain hydrate naturally.';
+        guardBgColor = isDark ? const Color(0xFF172554) : const Color(0xFFEFF6FF);
+        guardBorderColor = isDark ? const Color(0xFF1E40AF) : const Color(0xFFBFDBFE);
+        guardTextCol = isDark ? const Color(0xFF93C5FD) : const Color(0xFF1D4ED8);
+        guardIcon = Icons.beach_access_rounded;
+      }
+    } else {
+      guardMessage = '☀️ Clear Skies • Standard Outdoor Hydration Active';
+      guardBgColor = isDark ? Colors.black26 : const Color(0xFFF0FDF4);
+      guardBorderColor = isDark ? const Color(0xFF14532D) : const Color(0xFFBBF7D0);
+      guardTextCol = isDark ? Colors.green.shade200 : const Color(0xFF15803D);
+      guardIcon = Icons.wb_sunny_rounded;
+    }
 
     return InkWell(
       onTap: () {
@@ -2388,21 +2525,25 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
             const SizedBox(height: 10),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
-                color: isDark ? Colors.black26 : guardBg,
+                color: guardBgColor,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: guardBorder),
+                border: Border.all(color: guardBorderColor),
               ),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Icon(guardIcon, size: 16, color: guardTextCol),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      weather.rainGuardMessage,
+                      guardMessage,
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        color: isDark ? (isRainGuard ? Colors.blue.shade200 : Colors.green.shade200) : guardTextColor,
+                        color: guardTextCol,
+                        height: 1.35,
                       ),
                     ),
                   ),
@@ -2420,8 +2561,15 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   // =========================================================================
   Widget _buildPlantAndCarePanel() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final statusColor = _getMoistureColor(_moisturePercent);
-    final statusLabel = _getMoistureStatusLabel(_moisturePercent);
+    final Plant? assignedPlant = _plantService.getPlantForDevice(widget.device.id);
+    final statusColor = _getMoistureColor(_moisturePercent, assignedPlant);
+    final statusLabel = _getMoistureStatusLabel(_moisturePercent, assignedPlant);
+    final int tCrit = assignedPlant?.criticalMinMoisture ?? 15;
+    final int tOptMin = assignedPlant?.optimalMinMoisture ?? 28;
+    final int tOptMax = assignedPlant?.optimalMaxMoisture ?? 65;
+    final int tMax = assignedPlant?.overwaterMaxMoisture ?? 78;
+    final bool isOutdoor = assignedPlant?.isOutdoor ?? false;
+    final bool willRainToday = isOutdoor && (_weatherData?.isRainGuardActive ?? false);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(kDefaultPadding),
@@ -2594,25 +2742,134 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                 ),
                 const SizedBox(height: 12),
 
+                // Species 4-Tier Moisture Spectrum Strip
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isDark ? kDarkSurfaceColor : kBackgroundColor,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      _buildMiniSpectrumIndicator('Wilting', '<$tCrit%', const Color(0xFFDC2626)),
+                      const SizedBox(width: 4),
+                      _buildMiniSpectrumIndicator('Thirsty', '$tCrit-$tOptMin%', const Color(0xFFD97706)),
+                      const SizedBox(width: 4),
+                      _buildMiniSpectrumIndicator('Optimal', '$tOptMin-$tOptMax%', const Color(0xFF16A34A)),
+                      const SizedBox(width: 4),
+                      _buildMiniSpectrumIndicator('Overwater', '>$tMax%', const Color(0xFFB91C1C)),
+                    ],
+                  ),
+                ),
+
+                // Dynamic Alert / Advisory Banners
+                if (_moisturePercent < tCrit) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEE2E2),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFFCA5A5)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, size: 16, color: Color(0xFFDC2626)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '🚨 Critical Drought Alert ($_moisturePercent% < $tCrit%): Soil is critically dry! Severe risk of root desiccation and leaf wilt. Immediate hydration recommended.',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFB91C1C), height: 1.3),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else if (_moisturePercent > tMax) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFFECACA)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.water_rounded, size: 16, color: Color(0xFFDC2626)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '⚠️ Overwater Warning ($_moisturePercent% > $tMax%): Soil is saturated and waterlogged. Risk of root rot and oxygen deprivation. Halt all irrigation and ensure drainage.',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF991B1B), height: 1.3),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else if (_moisturePercent < tOptMin) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: willRainToday ? const Color(0xFFEFF6FF) : const Color(0xFFFFFBEB),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: willRainToday ? const Color(0xFFBFDBFE) : const Color(0xFFFDE68A)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(willRainToday ? Icons.beach_access_rounded : Icons.info_outline_rounded,
+                            size: 16, color: willRainToday ? const Color(0xFF2563EB) : const Color(0xFFD97706)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            willRainToday
+                                ? '🌧️ Rain Expected Today: Soil is nearing low ($_moisturePercent%), but rainfall will hydrate naturally without pump action.'
+                                : '💧 Soil Running Low: Soil moisture is nearing the dry side ($_moisturePercent% < $tOptMin%). Time to water or tap Smart Hydrate.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: willRainToday ? const Color(0xFF1D4ED8) : const Color(0xFFB45309),
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 12),
+
                 // Friendly target & power info
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Ideal Target: 30% - 65%',
+                      'Target Range: $tOptMin% - $tOptMax%',
                       style: TextStyle(
                         fontSize: 11,
                         color: isDark ? kDarkTextSecondary : kTextSecondary,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.bolt_rounded, size: 14, color: Color(0xFFD97706)),
+                        Icon(
+                          assignedPlant?.isIndoor == true ? Icons.home_rounded : Icons.park_rounded,
+                          size: 13,
+                          color: assignedPlant?.isIndoor == true ? Colors.blue : Colors.green,
+                        ),
                         const SizedBox(width: 4),
                         Text(
-                          'USB 5V Powered',
+                          assignedPlant?.isIndoor == true ? 'Indoor Specimen' : 'Outdoor Specimen',
                           style: TextStyle(
                             fontSize: 11,
                             color: isDark ? kDarkTextSecondary : kTextSecondary,
@@ -3076,18 +3333,46 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                   ),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: (_moisturePercent >= 25 ? kStatusSuccess : kStatusWarning).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _moisturePercent >= 25 ? 'Healthy Hydration' : 'Needs Moisture',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: _moisturePercent >= 25 ? kStatusSuccess : kStatusWarning,
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => _togglePlantEnvironment(assignedPlant),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: assignedPlant.isIndoor
+                        ? const Color(0xFF1E3A8A).withValues(alpha: isDark ? 0.35 : 0.12)
+                        : const Color(0xFF14532D).withValues(alpha: isDark ? 0.35 : 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: assignedPlant.isIndoor ? const Color(0xFF3B82F6) : const Color(0xFF22C55E),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        assignedPlant.isIndoor ? Icons.home_rounded : Icons.park_rounded,
+                        size: 13,
+                        color: assignedPlant.isIndoor ? const Color(0xFF3B82F6) : const Color(0xFF22C55E),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        assignedPlant.isIndoor ? 'Indoor' : 'Outdoor',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: assignedPlant.isIndoor
+                              ? (isDark ? const Color(0xFF93C5FD) : const Color(0xFF1D4ED8))
+                              : (isDark ? const Color(0xFF86EFAC) : const Color(0xFF15803D)),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.swap_horiz_rounded,
+                        size: 12,
+                        color: assignedPlant.isIndoor ? const Color(0xFF3B82F6) : const Color(0xFF22C55E),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -3131,21 +3416,52 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
           ),
           const SizedBox(height: 12),
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: isDark ? kDarkSurfaceColor : kBackgroundColor,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Target Moisture Range: ',
-                  style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Target Optimal Hydration: ',
+                      style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                    ),
+                    Text(
+                      '${assignedPlant.optimalMinMoisture}% - ${assignedPlant.optimalMaxMoisture}%',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryColor),
+                    ),
+                  ],
                 ),
-                const Text(
-                  '30% - 65%',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryColor),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Critical Wilting / Overwater: ',
+                      style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                    ),
+                    Text(
+                      '<${assignedPlant.criticalMinMoisture}% | >${assignedPlant.overwaterMaxMoisture}%',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.amber.shade300 : const Color(0xFFD97706),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  assignedPlant.isIndoor
+                      ? '🏠 Indoor: Sheltered from rain. RainGuard bypassed.'
+                      : '🌿 Outdoor: RainGuard active. Automatically holds watering if rain is forecast today.',
+                  style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : kTextSecondary, fontStyle: FontStyle.italic),
                 ),
               ],
             ),
@@ -3156,7 +3472,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
               Expanded(
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.swap_horiz_rounded, size: 16),
-                  label: const Text('Change Plant'),
+                  label: const Text('Change'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: kPrimaryColor,
                     side: const BorderSide(color: kPrimaryColor),
@@ -3164,6 +3480,31 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: _showPlantAssignmentModal,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('Edit Plant'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.teal,
+                    side: const BorderSide(color: Colors.teal),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () async {
+                    final updated = await Navigator.push<Plant>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => EditPlantScreen(plant: assignedPlant),
+                      ),
+                    );
+                    if (updated != null && mounted) {
+                      _plantService.updatePlant(updated);
+                      setState(() {});
+                    }
+                  },
                 ),
               ),
               const SizedBox(width: 8),
@@ -3481,17 +3822,36 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     );
   }
 
-  // Helpers
-  Color _getMoistureColor(int moisture) {
-    if (moisture < 25) return const Color(0xFFDC2626); // Dry - Red
-    if (moisture <= 70) return kStatusSuccess; // Optimal - Green
-    return const Color(0xFF2563EB); // Wet - Blue
+  // Helpers calibrated with botanical species & 4-tier moisture spectrum
+  Color _getMoistureColor(int moisture, [Plant? plant]) {
+    final p = plant ?? _plantService.getPlantForDevice(widget.device.id);
+    final tCrit = p?.criticalMinMoisture ?? 15;
+    final tOptMin = p?.optimalMinMoisture ?? 28;
+    final tOptMax = p?.optimalMaxMoisture ?? 65;
+    final tMax = p?.overwaterMaxMoisture ?? 78;
+
+    if (moisture < tCrit) return const Color(0xFFDC2626); // Critical Drought - Red
+    if (moisture < tOptMin) return const Color(0xFFD97706); // Thirsty/Dry - Amber
+    if (moisture <= tOptMax) return kStatusSuccess; // Optimal - Green
+    if (moisture <= tMax) return const Color(0xFF0284C7); // Well Hydrated - Blue
+    return const Color(0xFFB91C1C); // Overwatered / Saturated - Deep Red
   }
 
-  String _getMoistureStatusLabel(int moisture) {
-    if (moisture < 25) return 'Soil Dry (Needs Water)';
-    if (moisture <= 70) return 'Optimal Moisture';
-    return 'Wet Soil';
+  String _getMoistureStatusLabel(int moisture, [Plant? plant]) {
+    final p = plant ?? _plantService.getPlantForDevice(widget.device.id);
+    final tCrit = p?.criticalMinMoisture ?? 15;
+    final tOptMin = p?.optimalMinMoisture ?? 28;
+    final tOptMax = p?.optimalMaxMoisture ?? 65;
+    final tMax = p?.overwaterMaxMoisture ?? 78;
+    final isRainExpected = (p == null || p.isOutdoor) && (_weatherData?.isRainGuardActive == true);
+
+    if (moisture < tCrit) return 'Critical Drought ⚠️';
+    if (moisture < tOptMin) {
+      return isRainExpected ? 'Thirsty (Rain Expected)' : 'Soil Low (Due for Water)';
+    }
+    if (moisture <= tOptMax) return 'Optimal Hydration';
+    if (moisture <= tMax) return 'Well Hydrated';
+    return '⚠️ Overwatered';
   }
 }
 
@@ -3534,5 +3894,525 @@ class _SparklinePainter extends CustomPainter {
   bool shouldRepaint(covariant _SparklinePainter oldDelegate) {
     return oldDelegate.values.length != values.length ||
         (values.isNotEmpty && oldDelegate.values.isNotEmpty && oldDelegate.values.last != values.last);
+  }
+}
+
+// ===========================================================================
+// SMART HYDRATE TO OPTIMAL MODAL (PULSE-AND-SOAK CLOSED LOOP WORKFLOW)
+// ===========================================================================
+class _SmartHydrateModal extends StatefulWidget {
+  final IotDevice device;
+  final Plant? plant;
+  final int currentMoisture;
+  final IotFirestoreService firestoreService;
+  final ValueChanged<int> onMoistureUpdated;
+
+  const _SmartHydrateModal({
+    required this.device,
+    required this.plant,
+    required this.currentMoisture,
+    required this.firestoreService,
+    required this.onMoistureUpdated,
+  });
+
+  @override
+  State<_SmartHydrateModal> createState() => _SmartHydrateModalState();
+}
+
+class _SmartHydrateModalState extends State<_SmartHydrateModal> {
+  late int _moisture;
+  late int _targetMoisture;
+  late int _optMinMoisture;
+  late int _critMinMoisture;
+  late int _overwaterMax;
+
+  int _cycle = 0;
+  final int _maxCycles = 3;
+  bool _isRunning = false;
+  String _phase = 'idle'; // 'idle', 'already_optimal', 'pulsing', 'soaking', 'completed', 'aborted'
+  int _soakSecondsRemaining = 10;
+  Timer? _soakTimer;
+  String _statusMessage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _moisture = widget.currentMoisture;
+    _targetMoisture = widget.plant?.optimalMaxMoisture ?? 65;
+    _optMinMoisture = widget.plant?.optimalMinMoisture ?? 30;
+    _critMinMoisture = widget.plant?.criticalMinMoisture ?? 15;
+    _overwaterMax = widget.plant?.overwaterMaxMoisture ?? 78;
+
+    if (_moisture >= _targetMoisture) {
+      _phase = 'already_optimal';
+      _statusMessage =
+          'Soil moisture is currently at $_moisture%, which satisfies or exceeds the optimal target ($_targetMoisture%). Additional watering is not needed to prevent root saturation.';
+    } else {
+      _statusMessage =
+          'Soil moisture is at $_moisture% (Optimal target is $_targetMoisture%). Water will be applied using the Pulse-and-Soak protocol: 3-second gentle pulses followed by a 10-second soak window.';
+    }
+  }
+
+  @override
+  void dispose() {
+    _soakTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _startHydration() async {
+    setState(() {
+      _isRunning = true;
+      _cycle = 1;
+      _phase = 'pulsing';
+      _statusMessage = 'Cycle 1/$_maxCycles: Dispatched 3-second hardware pulse...';
+    });
+
+    await _executeCycle();
+  }
+
+  Future<void> _executeCycle() async {
+    if (!mounted || !_isRunning) return;
+
+    setState(() {
+      _phase = 'pulsing';
+      _statusMessage = 'Cycle $_cycle/$_maxCycles: Actuating hardware pump (3s pulse)...';
+    });
+
+    try {
+      await widget.firestoreService.triggerManualPulse(widget.device.id, durationSeconds: 3);
+    } catch (e) {
+      debugPrint('Pulse trigger error: $e');
+    }
+
+    if (!mounted || !_isRunning) return;
+
+    // Start 10-second soak interval
+    setState(() {
+      _phase = 'soaking';
+      _soakSecondsRemaining = 10;
+      _statusMessage = 'Cycle $_cycle/$_maxCycles: Root zone percolation & diffusion (10s soak)...';
+    });
+
+    _soakTimer?.cancel();
+    _soakTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (_soakSecondsRemaining > 1) {
+        setState(() {
+          _soakSecondsRemaining--;
+        });
+      } else {
+        timer.cancel();
+        await _evaluateTelemetry();
+      }
+    });
+  }
+
+  Future<void> _evaluateTelemetry() async {
+    if (!mounted || !_isRunning) return;
+
+    setState(() {
+      _phase = 'evaluating';
+      _statusMessage = 'Fetching updated soil probe telemetry...';
+    });
+
+    // Refresh telemetry from Firestore
+    final updatedDev = await widget.firestoreService.getDevice(widget.device.id);
+    if (updatedDev?.moistureLevel != null) {
+      final newM = (updatedDev!.moistureLevel! * 100).round();
+      setState(() {
+        _moisture = newM;
+      });
+      widget.onMoistureUpdated(newM);
+    }
+
+    if (!mounted) return;
+
+    // Check target reached
+    if (_moisture >= _targetMoisture) {
+      _finalizeHydration(
+        summary: '🎉 Target reached! Soil moisture is now at $_moisture% (Optimal: $_targetMoisture%).',
+      );
+      return;
+    }
+
+    // Check safety cap
+    if (_cycle >= _maxCycles) {
+      _finalizeHydration(
+        summary: 'Safety cap reached (3 pulses completed). Current moisture is $_moisture%. Allowed soil time to absorb before further irrigation.',
+      );
+      return;
+    }
+
+    // Continue to next cycle
+    setState(() {
+      _cycle++;
+    });
+    await _executeCycle();
+  }
+
+  void _finalizeHydration({required String summary}) {
+    _soakTimer?.cancel();
+    setState(() {
+      _isRunning = false;
+      _phase = 'completed';
+      _statusMessage = summary;
+    });
+
+    if (widget.plant != null) {
+      CareLogService().logWatering(
+        plantId: widget.plant!.id,
+        plantName: widget.plant!.name,
+        species: widget.plant!.species,
+        imageUrl: widget.plant!.imageUrl,
+        amountMl: _cycle * 75,
+        careMode: 'Smart Hydrate to Optimal (Pulse-and-Soak)',
+        moistureBefore: widget.currentMoisture,
+        moistureAfter: _moisture,
+        notes: summary,
+      );
+
+      final updatedPlant = widget.plant!.copyWith(lastWatered: DateTime.now());
+      PlantService().updatePlant(updatedPlant);
+    }
+  }
+
+  void _abortHydration() {
+    _soakTimer?.cancel();
+    setState(() {
+      _isRunning = false;
+      _phase = 'aborted';
+      _statusMessage = 'Hydration stopped by user. Current moisture is $_moisture%.';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final plantName = widget.plant?.name ?? widget.device.name;
+    final species = widget.plant?.species ?? 'Botanical Specimen';
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      decoration: BoxDecoration(
+        color: isDark ? kDarkCardColor : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 20,
+            offset: Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Drag handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade400,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+
+            // Header
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: kPrimaryColor.withValues(alpha: 0.12),
+                  child: const Icon(Icons.auto_awesome_rounded, color: kPrimaryColor, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Smart Hydrate to Optimal',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        '$plantName • $species',
+                        style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () {
+                    _soakTimer?.cancel();
+                    Navigator.pop(context);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Moisture Comparison & Range Gauge
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? kDarkSurfaceColor : kBackgroundColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      Column(
+                        children: [
+                          const Text('Current Moisture', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$_moisture%',
+                            style: TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: _moisture >= _targetMoisture
+                                  ? const Color(0xFF16A34A)
+                                  : (_moisture < _critMinMoisture ? const Color(0xFFDC2626) : const Color(0xFFD97706)),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Container(width: 1, height: 36, color: Colors.grey.shade300),
+                      Column(
+                        children: [
+                          const Text('Target Hydration', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$_targetMoisture%',
+                            style: const TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: kPrimaryColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Dual Progress Bar showing Target Marker
+                  Stack(
+                    alignment: Alignment.centerLeft,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: LinearProgressIndicator(
+                          value: (_moisture / 100.0).clamp(0.0, 1.0),
+                          minHeight: 12,
+                          backgroundColor: Colors.grey.shade300,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            _moisture >= _targetMoisture ? const Color(0xFF16A34A) : kPrimaryColor,
+                          ),
+                        ),
+                      ),
+                      // Target Line Marker
+                      Positioned(
+                        left: (_targetMoisture / 100.0) * (MediaQuery.of(context).size.width - 72),
+                        child: Container(
+                          width: 2,
+                          height: 18,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Critical Wilting: <$_critMinMoisture%',
+                        style: const TextStyle(fontSize: 10, color: Color(0xFFDC2626)),
+                      ),
+                      Text(
+                        'Target: $_optMinMoisture% - $_targetMoisture%',
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF16A34A)),
+                      ),
+                      Text(
+                        'Max: >$_overwaterMax%',
+                        style: const TextStyle(fontSize: 10, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Live Phase Box
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _phase == 'completed' || _phase == 'already_optimal'
+                    ? const Color(0xFFF0FDF4)
+                    : (_phase == 'soaking' ? const Color(0xFFEFF6FF) : (isDark ? kDarkSurfaceColor : kBackgroundColor)),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: _phase == 'completed' || _phase == 'already_optimal'
+                      ? const Color(0xFFBBF7D0)
+                      : (_phase == 'soaking' ? const Color(0xFFBFDBFE) : (isDark ? kDarkBorderSubtle : kBorderSubtle)),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_phase == 'soaking')
+                    SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CircularProgressIndicator(
+                            value: _soakSecondsRemaining / 10.0,
+                            strokeWidth: 3,
+                            color: const Color(0xFF2563EB),
+                            backgroundColor: Colors.blue.shade100,
+                          ),
+                          Text(
+                            '$_soakSecondsRemaining',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8)),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (_phase == 'pulsing')
+                    const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: kPrimaryColor),
+                    )
+                  else if (_phase == 'completed' || _phase == 'already_optimal')
+                    const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 24)
+                  else
+                    const Icon(Icons.info_outline_rounded, color: kPrimaryColor, size: 22),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _phase == 'soaking'
+                              ? 'Pulse-and-Soak Absorption'
+                              : (_phase == 'pulsing'
+                                  ? 'Actuating Hardware Pump'
+                                  : (_phase == 'completed'
+                                      ? 'Hydration Complete'
+                                      : (_phase == 'already_optimal' ? 'Healthy Hydration' : 'Pulse-and-Soak Protocol'))),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: _phase == 'completed' || _phase == 'already_optimal'
+                                ? const Color(0xFF15803D)
+                                : (_phase == 'soaking' ? const Color(0xFF1D4ED8) : (isDark ? kDarkTextPrimary : kTextPrimary)),
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          _statusMessage,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? kDarkTextSecondary : kTextSecondary,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // Bottom Action Button
+            if (_isRunning)
+              ElevatedButton.icon(
+                icon: const Icon(Icons.stop_rounded, size: 18),
+                label: const Text('Stop Hydration', style: TextStyle(fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kStatusDanger,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: _abortHydration,
+              )
+            else if (_phase == 'completed' || _phase == 'already_optimal')
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Close'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.water_drop_outlined, size: 16),
+                      label: const Text('Force Pulse (3s)'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kPrimaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () async {
+                        await widget.firestoreService.triggerManualPulse(widget.device.id, durationSeconds: 3);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('💧 Quick 3s water pulse dispatched.')),
+                          );
+                          Navigator.pop(context);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              )
+            else
+              ElevatedButton.icon(
+                icon: const Icon(Icons.water_drop_rounded, size: 18),
+                label: Text(
+                  'Begin Smart Hydration ($_moisture% → $_targetMoisture%)',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kPrimaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: _startHydration,
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }

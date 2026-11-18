@@ -335,6 +335,32 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
                                 ],
                               ),
                             ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _plant.isIndoor ? const Color(0xFF1E3A8A) : const Color(0xFF14532D),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _plant.isIndoor ? Icons.home_rounded : Icons.park_rounded,
+                                    size: 11,
+                                    color: Colors.white,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _plant.isIndoor ? 'Indoor' : 'Outdoor',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 6),
