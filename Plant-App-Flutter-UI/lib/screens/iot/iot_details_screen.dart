@@ -501,7 +501,9 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
         ),
         content: Text(
           'Are you sure you want to disconnect and forget "$currentSsid"?\n\n'
-          'The ESP32 will disconnect from the local network, erase Wi-Fi credentials in flash memory, and restart in standalone setup mode (ESP32_Plant_Irrigation).',
+          '• The ESP32 will erase its saved Wi-Fi credentials in flash memory and restart into standalone setup mode (ESP32_Plant_Irrigation).\n'
+          '• Your botanical specimen link, calibrations, and activity history remain saved in Cloud Firestore.\n\n'
+          'Tip: To completely delete and unpair this device from your account and Firebase, use "Unpair / Forget Device" in the Danger Zone below.',
           style: const TextStyle(fontSize: 13, color: kTextPrimary, height: 1.4),
         ),
         actions: [

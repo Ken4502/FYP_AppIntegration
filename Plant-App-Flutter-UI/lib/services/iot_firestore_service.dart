@@ -228,6 +228,8 @@ class IotFirestoreService {
       },
       'systemState': 'FACTORY_RESETTING',
       'stateReason': 'Reboot into setup mode requested for Wi-Fi reconfiguration',
+      'isWifiConnected': false,
+      'wifiSsid': null,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
