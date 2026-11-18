@@ -172,6 +172,9 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
       _setupToken = _provisioningService.generateSetupToken();
     }
 
+    if (!mounted) return;
+    _showConnectingDialog(context, ssid);
+
     try {
       await _provisioningService.sendCredentialsToSoftAP(
         ssid: ssid,
@@ -179,6 +182,11 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
         setupToken: _setupToken!,
         deviceId: deviceId,
       );
+
+      // Dismiss connecting dialog
+      if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
 
       if (!mounted) return;
 
@@ -192,6 +200,11 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
 
       _startVerificationCountdown(_setupToken!, deviceId, ssid);
     } catch (e) {
+      // Dismiss connecting dialog
+      if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
       if (!mounted) return;
       setState(() => _isSendingToSoftAp = false);
       final errMsg = e.toString().replaceFirst('Exception: ', '');
@@ -200,6 +213,92 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
         '$errMsg\n\nPlease check your Wi-Fi password and try again. Your phone is still connected to the ESP32 setup hotspot.',
       );
     }
+  }
+
+  void _showConnectingDialog(BuildContext context, String ssid) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: Dialog(
+          backgroundColor: isDark ? kDarkCardColor : kSurfaceColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: kPrimaryColor.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation<Color>(kPrimaryColor),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Verifying Wi-Fi Connection...',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'ESP32 is testing connection to\n"$ssid"',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: kTextSecondary,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isDark ? kDarkSurfaceColor : kBackgroundColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.lock_clock_rounded, size: 16, color: kPrimaryColor),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'Handshaking with router & verifying password...',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: isDark ? kDarkTextSecondary : kTextSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  '⚡ Fast test (takes ~2s). SoftAP stays active.',
+                  style: TextStyle(fontSize: 11, color: kPrimaryColor, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _startVerificationCountdown(String setupToken, String deviceId, String ssid) {

@@ -204,14 +204,22 @@ class IotProvisioningService {
     required String deviceId,
     Duration timeout = const Duration(seconds: 20),
   }) async {
-    final docRef = _firestore.collection('provisioning').doc(setupToken);
+    final provDocRef = _firestore.collection('provisioning').doc(setupToken);
+    final devDocRef = _firestore.collection('iot_devices').doc(deviceId);
 
     final completer = Completer<ProvisioningResult>();
-    StreamSubscription<DocumentSnapshot>? subscription;
+    StreamSubscription<DocumentSnapshot>? provSubscription;
+    StreamSubscription<DocumentSnapshot>? devSubscription;
     Timer? timeoutTimer;
 
+    void cleanup() {
+      timeoutTimer?.cancel();
+      provSubscription?.cancel();
+      devSubscription?.cancel();
+    }
+
     timeoutTimer = Timer(timeout, () {
-      subscription?.cancel();
+      cleanup();
       if (!completer.isCompleted) {
         completer.complete(
           ProvisioningResult(
@@ -223,16 +231,44 @@ class IotProvisioningService {
       }
     });
 
-    subscription = docRef.snapshots().listen(
+    // 1. Primary Check: Direct telemetry report in iot_devices/{deviceId}
+    devSubscription = devDocRef.snapshots().listen(
+      (snapshot) async {
+        if (!snapshot.exists) return;
+        final data = snapshot.data() ?? {};
+        final bool isOnline = (data['isWifiConnected'] == true || data['wifiConnected'] == true);
+        final String sysState = (data['systemState'] ?? '').toString();
+
+        if (isOnline || sysState == 'CONNECTED_ONLINE') {
+          cleanup();
+          final ip = data['stationIp']?.toString();
+          final ssid = data['wifiSsid']?.toString();
+
+          if (!completer.isCompleted) {
+            completer.complete(
+              ProvisioningResult(
+                isSuccess: true,
+                message: 'ESP32 successfully connected to Wi-Fi and synced with Cloud Firestore!',
+                deviceId: deviceId,
+                ip: ip,
+                ssid: ssid,
+              ),
+            );
+          }
+        }
+      },
+      onError: (_) {},
+    );
+
+    // 2. Secondary Check: provisioning/{setupToken}
+    provSubscription = provDocRef.snapshots().listen(
       (snapshot) async {
         if (!snapshot.exists) return;
         final data = snapshot.data() ?? {};
         final status = (data['status'] ?? 'pending').toString().toLowerCase();
 
         if (status == 'connected') {
-          timeoutTimer?.cancel();
-          subscription?.cancel();
-
+          cleanup();
           final ip = data['ip']?.toString();
           final ssid = data['ssid']?.toString();
 
@@ -255,9 +291,7 @@ class IotProvisioningService {
             );
           }
         } else if (status == 'failed') {
-          timeoutTimer?.cancel();
-          subscription?.cancel();
-
+          cleanup();
           final errorMsg = data['errorMessage']?.toString() ?? 'Wi-Fi connection failed.';
           if (!completer.isCompleted) {
             completer.complete(
@@ -270,9 +304,7 @@ class IotProvisioningService {
           }
         }
       },
-      onError: (err) {
-        // Continue waiting until timeout or resolve
-      },
+      onError: (_) {},
     );
 
     return completer.future;
