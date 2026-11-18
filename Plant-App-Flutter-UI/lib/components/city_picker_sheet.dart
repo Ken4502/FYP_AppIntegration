@@ -33,6 +33,7 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
 
   List<UserLocation> _searchResults = [];
   bool _isSearching = false;
+  bool _isLocatingGps = false;
   Timer? _debounceTimer;
 
   @override
@@ -69,13 +70,32 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
     });
   }
 
+  Future<void> _useCurrentPhoneGps() async {
+    setState(() => _isLocatingGps = true);
+    final gpsLoc = await _weatherService.getDeviceGpsLocation();
+    if (!mounted) return;
+    setState(() => _isLocatingGps = false);
+
+    if (gpsLoc != null) {
+      widget.onCitySelected(gpsLoc);
+      Navigator.pop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not access phone GPS. Please verify location permissions are enabled.'),
+          backgroundColor: Color(0xFFDC2626),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentLoc = _weatherService.currentLocation;
 
     return Container(
-      height: MediaQuery.of(context).size.height * 0.75,
+      height: MediaQuery.of(context).size.height * 0.78,
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
@@ -118,7 +138,7 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'For hyper-local weather & smart RainGuard',
+                      'Pinpoint city for live weather & RainGuard',
                       style: TextStyle(
                         fontSize: 12,
                         color: isDark ? kDarkTextSecondary : kTextSecondary,
@@ -136,6 +156,37 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
 
           const SizedBox(height: 12),
 
+          // Instant Phone GPS Location Button
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: ElevatedButton.icon(
+                onPressed: _isLocatingGps ? null : _useCurrentPhoneGps,
+                icon: _isLocatingGps
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.my_location_rounded, size: 18),
+                label: Text(
+                  _isLocatingGps ? 'Detecting Phone Location...' : 'Use Current Phone Location (GPS)',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kPrimaryColor,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
           // Search Field
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -143,7 +194,7 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
               controller: _searchController,
               onChanged: _onSearchChanged,
               decoration: InputDecoration(
-                hintText: 'Search city or town (e.g. Petaling Jaya, Klang)...',
+                hintText: 'Or search city (e.g. Petaling Jaya, Klang)...',
                 hintStyle: TextStyle(
                   fontSize: 13,
                   color: isDark ? kDarkTextSecondary : kTextSecondary,

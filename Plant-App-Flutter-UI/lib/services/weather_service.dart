@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 
 class UserLocation {
@@ -116,6 +118,114 @@ class WeatherService {
     UserLocation(city: 'Kuching', region: 'Sarawak', country: 'Malaysia', latitude: 1.5533, longitude: 110.3592),
   ];
 
+  /// Pinpoints the user's city via the phone's physical hardware GPS/Location sensor
+  Future<UserLocation?> getDeviceGpsLocation() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        debugPrint('[WEATHER] GPS service is disabled on device');
+        return null;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          debugPrint('[WEATHER] GPS permission denied by user');
+          return null;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        debugPrint('[WEATHER] GPS permission denied forever');
+        return null;
+      }
+
+      // Fast, balanced query for city-level accuracy
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 6),
+        ),
+      );
+
+      debugPrint('[WEATHER] GPS coordinates: ${position.latitude}, ${position.longitude}');
+      final resolved = await reverseGeocodeCoordinates(position.latitude, position.longitude);
+      if (resolved != null) {
+        _cachedLocation = resolved;
+        return resolved;
+      }
+    } catch (e) {
+      debugPrint('[WEATHER] Error fetching phone GPS location: $e');
+    }
+    return null;
+  }
+
+  /// Reverse geocode GPS coordinates into City, State, Country
+  Future<UserLocation?> reverseGeocodeCoordinates(double lat, double lon) async {
+    // 1. Primary: BigDataCloud reverse geocode client API (fast, clean town/locality resolution)
+    try {
+      final url = Uri.parse(
+        'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=$lat&longitude=$lon&localityLanguage=en',
+      );
+      final res = await http.get(url).timeout(const Duration(seconds: 4));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        String city = (data['locality'] as String?)?.trim() ?? '';
+        if (city.isEmpty) city = (data['city'] as String?)?.trim() ?? '';
+        final region = (data['principalSubdivision'] as String?)?.trim() ?? '';
+        final country = (data['countryName'] as String?)?.trim() ?? '';
+
+        if (city.isNotEmpty || region.isNotEmpty) {
+          return UserLocation(
+            city: city.isNotEmpty ? city : region,
+            region: region,
+            country: country,
+            latitude: lat,
+            longitude: lon,
+          );
+        }
+      }
+    } catch (_) {}
+
+    // 2. Secondary fallback: Nominatim OpenStreetMap
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json',
+      );
+      final res = await http.get(url, headers: {'User-Agent': 'UrbanGreen-App/1.0'}).timeout(const Duration(seconds: 4));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final address = data['address'] as Map<String, dynamic>? ?? {};
+        String city = (address['city'] as String?)?.trim() ??
+            (address['town'] as String?)?.trim() ??
+            (address['municipality'] as String?)?.trim() ??
+            (address['suburb'] as String?)?.trim() ??
+            '';
+        final state = (address['state'] as String?)?.trim() ?? '';
+        final country = (address['country'] as String?)?.trim() ?? '';
+
+        if (city.isNotEmpty || state.isNotEmpty) {
+          return UserLocation(
+            city: city.isNotEmpty ? city : state,
+            region: state,
+            country: country,
+            latitude: lat,
+            longitude: lon,
+          );
+        }
+      }
+    } catch (_) {}
+
+    return UserLocation(
+      city: 'Local Area',
+      region: '',
+      country: '',
+      latitude: lat,
+      longitude: lon,
+    );
+  }
+
   /// Search cities worldwide with exact coordinates using Open-Meteo Geocoding API
   Future<List<UserLocation>> searchCities(String query) async {
     final q = query.trim();
@@ -164,13 +274,22 @@ class WeatherService {
     );
   }
 
-  /// Pinpoints user's city via IP/Wi-Fi geolocation with zero OS popups/permissions.
+  /// Resolves the user's city: First via physical phone GPS, then fallback to IP/Wi-Fi
   Future<UserLocation> resolveUserLocation({bool forceRefresh = false}) async {
     if (!forceRefresh && _cachedLocation != null) {
       return _cachedLocation!;
     }
 
-    // 1. Primary: ip-api.com
+    // 1. FIRST PRIORITY: Phone's physical hardware GPS/Location sensor
+    final gpsLoc = await getDeviceGpsLocation();
+    if (gpsLoc != null) {
+      debugPrint('[WEATHER] Using phone GPS location: ${gpsLoc.displayName}');
+      _cachedLocation = gpsLoc;
+      return gpsLoc;
+    }
+
+    // 2. SECOND PRIORITY: Fallback to IP/Wi-Fi Geolocation
+    debugPrint('[WEATHER] GPS unavailable; attempting IP/Wi-Fi fallback');
     try {
       final uri = Uri.parse('http://ip-api.com/json/?fields=status,country,regionName,city,lat,lon');
       final res = await http.get(uri).timeout(const Duration(seconds: 4));
@@ -190,7 +309,7 @@ class WeatherService {
       }
     } catch (_) {}
 
-    // 2. Secondary Fallback: ipapi.co
+    // 3. THIRD PRIORITY: ipapi.co
     try {
       final uri = Uri.parse('https://ipapi.co/json/');
       final res = await http.get(uri).timeout(const Duration(seconds: 4));
@@ -208,7 +327,7 @@ class WeatherService {
       }
     } catch (_) {}
 
-    // 3. Fallback: Default to national metropolitan center
+    // 4. Default fallback
     const fallback = UserLocation(
       city: 'Kuala Lumpur',
       region: 'Federal Territory',

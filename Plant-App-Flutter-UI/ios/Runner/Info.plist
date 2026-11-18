@@ -45,5 +45,7 @@
 	<string>UrbanGreen needs camera access to capture plant photos for disease and species identification.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>UrbanGreen needs photo library access to upload plant photos for disease diagnosis.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>UrbanGreen uses your location to provide accurate local weather forecasts and calibrate automated smart watering.</string>
 </dict>
 </plist>
