@@ -194,10 +194,10 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSendingToSoftAp = false);
+      final errMsg = e.toString().replaceFirst('Exception: ', '');
       _showErrorDialog(
-        'Could Not Deliver Credentials',
-        'Failed to deliver credentials to http://192.168.4.1/provision.\n\n'
-        'Please ensure your phone is still connected to the "ESP32_Plant_Irrigation" hotspot and try again.',
+        'Wi-Fi Connection Failed',
+        '$errMsg\n\nPlease check your Wi-Fi password and try again. Your phone is still connected to the ESP32 setup hotspot.',
       );
     }
   }

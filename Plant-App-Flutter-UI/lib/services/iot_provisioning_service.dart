@@ -182,11 +182,18 @@ class IotProvisioningService {
       if (response.statusCode == 200) {
         return true;
       } else {
-        throw Exception('ESP32 returned HTTP ${response.statusCode}: ${response.body}');
+        String errorMsg = 'Wi-Fi connection failed.';
+        try {
+          final data = jsonDecode(response.body);
+          if (data is Map && data['error'] != null) {
+            errorMsg = data['error'].toString();
+          }
+        } catch (_) {}
+        throw Exception(errorMsg);
       }
     } catch (e) {
-      // Re-throw with clear message
-      throw Exception('Failed to transmit credentials to ESP32 SoftAP ($e). Ensure phone is connected to ESP32 Wi-Fi hotspot.');
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      throw Exception(msg);
     }
   }
 
