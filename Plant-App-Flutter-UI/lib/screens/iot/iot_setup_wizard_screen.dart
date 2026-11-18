@@ -386,7 +386,7 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
                 SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'ESP32 requires a 2.4GHz Wi-Fi band. 5GHz-only networks are unsupported.',
+                    'Requires a 2.4GHz Wi-Fi band. Reconfiguring Wi-Fi preserves your linked botanical specimen, watering logs, and sensor history without overlap.',
                     style: TextStyle(fontSize: 11, color: Color(0xFF1E40AF), height: 1.3),
                   ),
                 ),

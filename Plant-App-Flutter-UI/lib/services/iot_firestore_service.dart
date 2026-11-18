@@ -214,8 +214,50 @@ class IotFirestoreService {
     }, SetOptions(merge: true));
   }
 
-  /// Delete / Unpair device
+  /// Full Factory Reset & Wipe Cycle:
+  /// Dispatches remote FACTORY_RESET command to ESP32 (if online) to wipe NVS preferences,
+  /// then removes the device document from Cloud Firestore.
+  Future<void> factoryResetDevice(String deviceId) async {
+    try {
+      // 1. Dispatch FACTORY_RESET remote command so ESP32 clears its NVS
+      final cmdId = 'cmd_reset_${DateTime.now().millisecondsSinceEpoch}';
+      await _devicesCol.doc(deviceId).set({
+        'pendingCommand': {
+          'command': 'FACTORY_RESET',
+          'commandId': cmdId,
+          'timestamp': FieldValue.serverTimestamp(),
+          'executed': false,
+        },
+        'systemState': 'FACTORY_RESETTING',
+        'stateReason': 'Factory reset requested from mobile app',
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // 2. Allow brief window for ESP32 sync cycle if online
+      await Future.delayed(const Duration(milliseconds: 800));
+    } catch (_) {}
+
+    // 3. Delete the device document from Cloud Firestore
+    await deleteDevice(deviceId);
+  }
+
+  /// Delete / Unpair device from Cloud Firestore
   Future<void> deleteDevice(String deviceId) async {
+    try {
+      // Attempt to dispatch FACTORY_RESET command first if device document exists
+      final cmdId = 'cmd_wipe_${DateTime.now().millisecondsSinceEpoch}';
+      await _devicesCol.doc(deviceId).set({
+        'pendingCommand': {
+          'command': 'FACTORY_RESET',
+          'commandId': cmdId,
+          'timestamp': FieldValue.serverTimestamp(),
+          'executed': false,
+        },
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      await Future.delayed(const Duration(milliseconds: 400));
+    } catch (_) {}
+
     await _devicesCol.doc(deviceId).delete();
   }
 

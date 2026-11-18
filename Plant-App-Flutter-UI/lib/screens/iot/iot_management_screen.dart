@@ -328,28 +328,32 @@ class _IotManagementScreenState extends State<IotManagementScreen>
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Unpair ${device.name}?'),
+        title: Text('Factory Reset & Unpair ${device.name}?'),
         content: const Text(
-          'This will remove this ESP32 from your Cloud Firestore account and unbind it from any linked botanical specimen.',
+          'This will completely wipe and reset the device:\n\n'
+          '• Sends a FACTORY_RESET command to erase Wi-Fi and NVS memory on the ESP32.\n'
+          '• Removes the device and telemetry from Cloud Firestore.\n'
+          '• Unbinds from any linked botanical specimen.\n\n'
+          'The ESP32 will reboot into an unconfigured state, allowing you to repeat the setup cycle cleanly.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: kStatusDanger, foregroundColor: Colors.white),
-            child: const Text('Unpair & Delete'),
+            child: const Text('Wipe & Unpair'),
           ),
         ],
       ),
     );
 
     if (confirm == true && mounted) {
-      await _firestoreService.deleteDevice(device.id);
+      await _firestoreService.factoryResetDevice(device.id);
       _plantService.unassignDevice(device.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Unpaired ${device.name} from Cloud Firestore.'),
+            content: Text('Unpaired ${device.name}. Factory reset sent to device.'),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -1168,17 +1172,21 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: isOnline
-                                      ? kStatusSuccess.withValues(alpha: 0.12)
-                                      : const Color(0xFFFEF3C7),
+                                  color: device.isGraceHotspotActive
+                                      ? const Color(0xFFFEF3C7)
+                                      : (isOnline
+                                          ? kStatusSuccess.withValues(alpha: 0.12)
+                                          : const Color(0xFFFEF3C7)),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
-                                  isOnline ? 'ONLINE' : 'STANDBY',
+                                  device.stateDisplayLabel.toUpperCase(),
                                   style: TextStyle(
                                     fontSize: 9,
                                     fontWeight: FontWeight.bold,
-                                    color: isOnline ? kStatusSuccess : const Color(0xFFB45309),
+                                    color: device.isGraceHotspotActive
+                                        ? const Color(0xFFD97706)
+                                        : (isOnline ? kStatusSuccess : const Color(0xFFB45309)),
                                   ),
                                 ),
                               ),

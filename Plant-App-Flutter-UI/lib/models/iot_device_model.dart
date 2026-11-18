@@ -41,6 +41,11 @@ class IotDevice {
   // Remote Commands
   Map<String, dynamic>? pendingCommand;
 
+  // Hardware State Machine & Diagnostics
+  String? systemState;
+  String? stateReason;
+  int reconnectAttempts;
+
   IotDevice({
     required this.id,
     required this.name,
@@ -60,7 +65,7 @@ class IotDevice {
     this.autoWaterSchedule,
     this.isVerifiedCompatible = true,
     this.serviceUuid = 'SoftAP-ESP32-Setup',
-    this.firmwareVersion = 'v4.0.0-Firestore',
+    this.firmwareVersion = 'v4.1.0-StateMachine',
     DateTime? lastSeen,
     this.lastReadingAt,
     this.lastWateredAt,
@@ -73,12 +78,42 @@ class IotDevice {
     this.linkedPlantName,
     this.linkedPlantImage,
     this.pendingCommand,
+    this.systemState,
+    this.stateReason,
+    this.reconnectAttempts = 0,
   }) : lastSeen = lastSeen ?? DateTime.now();
 
   /// Computed dynamic Online / Offline status based on 2-minute heartbeat window
   bool get isOnline {
     final now = DateTime.now();
     return now.difference(lastSeen).inSeconds < 120;
+  }
+
+  /// Whether the ESP32 is currently in grace fallback hotspot mode due to lost Wi-Fi
+  bool get isGraceHotspotActive => systemState == 'FALLBACK_HOTSPOT';
+
+  /// Human-friendly display label for hardware state
+  String get stateDisplayLabel {
+    if (isGraceHotspotActive) return 'Grace Hotspot (Wi-Fi Down)';
+    if (!isOnline) return 'Offline';
+    switch (systemState) {
+      case 'CONNECTED_ONLINE':
+        return 'Online';
+      case 'RECONNECTING':
+        return reconnectAttempts > 0 ? 'Reconnecting (Try $reconnectAttempts/3)' : 'Reconnecting...';
+      case 'FALLBACK_HOTSPOT':
+        return 'Grace Hotspot (Wi-Fi Down)';
+      case 'CONNECTING_WIFI':
+        return 'Connecting to Wi-Fi';
+      case 'HOTSPOT_BROADCASTING':
+        return 'Setup Hotspot Active';
+      case 'UNCONFIGURED':
+        return 'Unconfigured';
+      case 'FACTORY_RESETTING':
+        return 'Resetting / Wiping';
+      default:
+        return 'Online';
+    }
   }
 
   /// Whether alerts are currently snoozed/muted
@@ -186,6 +221,9 @@ class IotDevice {
       'linkedPlantName': linkedPlantName,
       'linkedPlantImage': linkedPlantImage,
       'pendingCommand': pendingCommand,
+      'systemState': systemState,
+      'stateReason': stateReason,
+      'reconnectAttempts': reconnectAttempts,
     };
   }
 
@@ -273,6 +311,9 @@ class IotDevice {
       linkedPlantName: map['linkedPlantName'] as String?,
       linkedPlantImage: map['linkedPlantImage'] as String?,
       pendingCommand: map['pendingCommand'] is Map ? Map<String, dynamic>.from(map['pendingCommand'] as Map) : null,
+      systemState: map['systemState'] as String?,
+      stateReason: map['stateReason'] as String?,
+      reconnectAttempts: (map['reconnectAttempts'] as num?)?.toInt() ?? 0,
     );
   }
 }

@@ -74,6 +74,11 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   bool _isResettingWifi = false;
   bool _showWifiForm = false;
 
+  // Hardware State Machine & Reconnect Tracking
+  String? _systemState;
+  String? _stateReason;
+  int _reconnectAttempts = 0;
+
   // Central Plant Service (for strictly 1-to-1 IoT <-> Plant mapping)
   final PlantService _plantService = PlantService();
 
@@ -88,6 +93,9 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     _isConnected = widget.device.isOnline;
     _lastReadingAt = widget.device.lastReadingAt ?? widget.device.lastSeen;
     _lastWateredAt = widget.device.lastWateredAt;
+    _systemState = widget.device.systemState;
+    _stateReason = widget.device.stateReason;
+    _reconnectAttempts = widget.device.reconnectAttempts;
 
     final initialSsid = widget.device.wifiSsid ?? _service.registeredHomeSsid ?? '';
     _wifiSsidController = TextEditingController(text: initialSsid);
@@ -164,6 +172,9 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
       _rawAdc = raw;
       _isPumpRunning = pump;
       _mode = modeStr;
+      _systemState = device.systemState;
+      _stateReason = device.stateReason;
+      _reconnectAttempts = device.reconnectAttempts;
 
       _moistureHistory.add(mPct);
       if (_moistureHistory.length > _maxHistoryPoints) {
@@ -302,27 +313,36 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Unpair IoT Device?'),
+        title: const Text('Factory Reset & Unpair?'),
         content: Text(
-          'Are you sure you want to remove "${widget.device.name}" from your Cloud Firestore account and unbind it from any linked botanical specimen?',
+          'This will completely wipe and unpair "${widget.device.name}":\n\n'
+          '• Sends a FACTORY_RESET command to erase Wi-Fi and NVS memory on the ESP32.\n'
+          '• Removes the device and telemetry from Cloud Firestore.\n'
+          '• Unbinds from any linked botanical specimen.\n\n'
+          'The ESP32 will reboot into a clean unconfigured state, allowing the setup cycle to repeat cleanly as usual.',
+          style: const TextStyle(fontSize: 13, height: 1.4),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: kStatusDanger, foregroundColor: Colors.white),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Unpair Device'),
+            child: const Text('Wipe & Unpair'),
           ),
         ],
       ),
     );
 
     if (confirm == true && mounted) {
-      await _firestoreService.deleteDevice(widget.device.id);
+      await _firestoreService.factoryResetDevice(widget.device.id);
       _plantService.unassignDevice(widget.device.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Device unpaired successfully from Cloud Firestore.')),
+          const SnackBar(
+            content: Text('Device wiped and removed. Ready for fresh setup.'),
+            backgroundColor: kPrimaryColor,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
         Navigator.pop(context, true);
       }
@@ -835,6 +855,110 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   }
 
   // =========================================================================
+  // GRACE FALLBACK HOTSPOT & RECONNECTION BANNER
+  // =========================================================================
+  Widget _buildGraceHotspotBanner(bool isDark) {
+    final bool isGraceHotspot = (_systemState == 'FALLBACK_HOTSPOT');
+    final bool isReconnecting = (_systemState == 'RECONNECTING');
+
+    if (!isGraceHotspot && !isReconnecting) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isGraceHotspot
+            ? (isDark ? const Color(0xFF451A03) : const Color(0xFFFEF3C7))
+            : (isDark ? const Color(0xFF0F172A) : const Color(0xFFE0F2FE)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isGraceHotspot
+              ? (isDark ? const Color(0xFFB45309) : const Color(0xFFF59E0B))
+              : (isDark ? const Color(0xFF0284C7) : const Color(0xFF38BDF8)),
+          width: 1.2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isGraceHotspot ? Icons.wifi_off_rounded : Icons.sync_problem_rounded,
+                color: isGraceHotspot ? const Color(0xFFD97706) : const Color(0xFF0284C7),
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isGraceHotspot
+                      ? 'Wi-Fi Down — Grace Hotspot Active'
+                      : 'Reconnecting Wi-Fi (Attempt $_reconnectAttempts of 3)',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: isGraceHotspot
+                        ? (isDark ? const Color(0xFFFDE68A) : const Color(0xFF92400E))
+                        : (isDark ? const Color(0xFFBAE6FD) : const Color(0xFF075985)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isGraceHotspot
+                ? 'The ESP32 lost Wi-Fi after 3 reconnect retries and opened its grace setup hotspot ("ESP32_Plant_Irrigation").\n\n'
+                  '• Autonomous auto-watering is STILL active on the sensor probe.\n'
+                  '• The chip auto-probes the router every 60s to self-heal.\n'
+                  '• To switch networks, tap Reconfigure Wi-Fi below (existing data & linked plant will NOT be lost).'
+                : 'The ESP32 detected a dropped connection and is attempting to reconnect to "${widget.device.wifiSsid ?? "configured Wi-Fi"}".',
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.4,
+              color: isGraceHotspot
+                  ? (isDark ? const Color(0xFFFDE68A) : const Color(0xFF78350F))
+                  : (isDark ? const Color(0xFFE0F2FE) : const Color(0xFF0C4A6E)),
+            ),
+          ),
+          if (_stateReason != null && _stateReason!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Diagnostic: $_stateReason',
+              style: TextStyle(
+                fontSize: 10.5,
+                fontStyle: FontStyle.italic,
+                color: isGraceHotspot
+                    ? (isDark ? const Color(0xFFFDE68A).withValues(alpha: 0.8) : const Color(0xFF92400E))
+                    : (isDark ? const Color(0xFFBAE6FD).withValues(alpha: 0.8) : const Color(0xFF0369A1)),
+              ),
+            ),
+          ],
+          if (isGraceHotspot) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.wifi_find_rounded, size: 16),
+                label: const Text('Reconfigure Wi-Fi (Preserve Data)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFD97706),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: _reconfigureWifi,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // =========================================================================
   // PANEL 2: DEVICE SETTINGS & NETWORK (WI-FI & DIAGNOSTICS)
   // =========================================================================
   Widget _buildDeviceAndWifiPanel() {
@@ -847,6 +971,8 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _buildGraceHotspotBanner(isDark),
+
           // 1. Device Summary Card
           Container(
             padding: const EdgeInsets.all(16),
@@ -2280,6 +2406,8 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _buildGraceHotspotBanner(isDark),
+
           // 1. Live status banner (Friendly & reassuring)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -2306,11 +2434,15 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _isConnected ? 'Device Online • Heartbeat Active' : 'Device Offline / Standby',
+                        _systemState == 'FALLBACK_HOTSPOT'
+                            ? 'Grace Hotspot Active • Auto-Watering Guardrails Online'
+                            : (_isConnected ? 'Device Online • Heartbeat Active' : 'Device Offline / Standby'),
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: _isConnected ? kStatusSuccess : const Color(0xFFB45309),
+                          color: _systemState == 'FALLBACK_HOTSPOT'
+                              ? const Color(0xFFD97706)
+                              : (_isConnected ? kStatusSuccess : const Color(0xFFB45309)),
                         ),
                       ),
                       Text(
@@ -2328,15 +2460,20 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: (_isConnected ? kStatusSuccess : const Color(0xFFD97706)).withValues(alpha: 0.15),
+                    color: (_systemState == 'FALLBACK_HOTSPOT'
+                            ? const Color(0xFFD97706)
+                            : (_isConnected ? kStatusSuccess : const Color(0xFFD97706)))
+                        .withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    _isConnected ? 'ONLINE' : 'OFFLINE',
+                    widget.device.stateDisplayLabel.toUpperCase(),
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
-                      color: _isConnected ? kStatusSuccess : const Color(0xFFD97706),
+                      color: _systemState == 'FALLBACK_HOTSPOT'
+                          ? const Color(0xFFD97706)
+                          : (_isConnected ? kStatusSuccess : const Color(0xFFD97706)),
                     ),
                   ),
                 ),
