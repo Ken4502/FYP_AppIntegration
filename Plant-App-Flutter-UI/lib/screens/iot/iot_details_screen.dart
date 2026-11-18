@@ -483,7 +483,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
 
   Future<void> _disconnectWifi() async {
     final currentSsid = widget.device.wifiSsid ?? _service.registeredHomeSsid ?? 'configured network';
-    final confirm = await showDialog<bool>(
+    final action = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -493,23 +493,34 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
             SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Disconnect from Wi-Fi?',
+                'Disconnect IoT Device',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ],
         ),
         content: Text(
-          'Are you sure you want to disconnect and forget "$currentSsid"?\n\n'
-          '• The ESP32 will erase its saved Wi-Fi credentials in flash memory and restart into standalone setup mode (ESP32_Plant_Irrigation).\n'
-          '• Your botanical specimen link, calibrations, and activity history remain saved in Cloud Firestore.\n\n'
-          'Tip: To completely delete and unpair this device from your account and Firebase, use "Unpair / Forget Device" in the Danger Zone below.',
-          style: const TextStyle(fontSize: 13, color: kTextPrimary, height: 1.4),
+          'Choose how you want to disconnect "$currentSsid":\n\n'
+          '1. Disconnect Wi-Fi Only:\n'
+          '• Erases Wi-Fi on the ESP32 and broadcasts "ESP32_Plant_Irrigation".\n'
+          '• Keeps the device registered in your app as an offline standby probe.\n\n'
+          '2. Disconnect & Unpair from App:\n'
+          '• Erases Wi-Fi on the ESP32 and broadcasts "ESP32_Plant_Irrigation".\n'
+          '• Completely removes the device from Firebase and deletes it from your list.',
+          style: const TextStyle(fontSize: 12.5, color: kTextPrimary, height: 1.4),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: kTextSecondary, fontWeight: FontWeight.bold)),
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('Cancel', style: TextStyle(color: kTextSecondary)),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, 'wifiOnly'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFD97706),
+              side: const BorderSide(color: Color(0xFFFCD34D)),
+            ),
+            child: const Text('Wi-Fi Only (Keep in List)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -517,46 +528,62 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Disconnect Wi-Fi', style: TextStyle(fontWeight: FontWeight.bold)),
+            onPressed: () => Navigator.pop(ctx, 'unpair'),
+            child: const Text('Disconnect & Unpair', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
           ),
         ],
       ),
     );
 
-    if (confirm != true || !mounted) return;
+    if (action == null || !mounted) return;
 
     setState(() => _isResettingWifi = true);
 
     try {
       if (widget.device.isOnline) {
         await _firestoreService.sendResetCommand(widget.device.id);
-        await Future.delayed(const Duration(milliseconds: 1000));
+        await Future.delayed(const Duration(milliseconds: 800));
       }
-      await _service.resetDeviceWifi(widget.device.id);
 
-      if (!mounted) return;
-      setState(() {
-        _isResettingWifi = false;
-        widget.device.isWifiConnected = false;
-        widget.device.wifiSsid = null;
-      });
+      if (action == 'unpair') {
+        await _firestoreService.factoryResetDevice(widget.device.id);
+        _plantService.unassignDevice(widget.device.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Device unpaired and removed from your account.'),
+              backgroundColor: kPrimaryColor,
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 4),
+            ),
+          );
+          Navigator.pop(context, true);
+        }
+      } else {
+        await _service.resetDeviceWifi(widget.device.id);
+        if (!mounted) return;
+        setState(() {
+          _isResettingWifi = false;
+          widget.device.isWifiConnected = false;
+          widget.device.wifiSsid = null;
+        });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Wi-Fi disconnected. ESP32 is now in standalone setup mode.'),
-          backgroundColor: kPrimaryColor,
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 4),
-        ),
-      );
-      Navigator.pop(context, true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Wi-Fi disconnected. ESP32 is now in standalone setup mode.'),
+            backgroundColor: kPrimaryColor,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        Navigator.pop(context, true);
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _isResettingWifi = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to disconnect Wi-Fi: $e'),
+            content: Text('Failed to disconnect: $e'),
             backgroundColor: kStatusDanger,
             behavior: SnackBarBehavior.floating,
           ),
