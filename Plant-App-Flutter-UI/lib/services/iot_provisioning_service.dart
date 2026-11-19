@@ -334,16 +334,41 @@ class IotProvisioningService {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    final deviceDoc = _firestore.collection('iot_devices').doc(deviceId);
+    String effectiveDeviceId = deviceId.trim();
+
+    // Long-Term Anti-Duplication Guard:
+    // If the caller passed the generic legacy string "SmartPlant-ESP32" or an empty ID,
+    // check if the user already has a canonical hardware device (e.g. SmartPlant-20FB3F).
+    // If so, update that real hardware record instead of spawning a duplicate!
+    if (effectiveDeviceId.isEmpty || effectiveDeviceId == 'SmartPlant-ESP32') {
+      try {
+        final existingQuery = await _firestore
+            .collection('iot_devices')
+            .where('linkedUserIds', arrayContains: user.uid)
+            .get();
+        final canonicalDocs = existingQuery.docs.where((d) => RegExp(r'^SmartPlant-[A-Fa-f0-9]{4,12}$').hasMatch(d.id));
+        if (canonicalDocs.isNotEmpty) {
+          effectiveDeviceId = canonicalDocs.first.id;
+        }
+      } catch (_) {}
+    }
+
+    if (effectiveDeviceId.isEmpty) {
+      effectiveDeviceId = 'SmartPlant-ESP32';
+    }
+
+    final deviceDoc = _firestore.collection('iot_devices').doc(effectiveDeviceId);
     final existing = await deviceDoc.get();
 
     final updates = <String, dynamic>{
-      'id': deviceId,
+      'id': effectiveDeviceId,
       'userId': user.uid,
       'registeredBy': user.uid,
       'linkedUserIds': FieldValue.arrayUnion([user.uid]),
       'ssid': ssid,
+      'wifiSsid': ssid,
       'isWifiConnected': true,
+      'wifiConnected': true,
       'lastSeen': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -368,6 +393,17 @@ class IotProvisioningService {
       await deviceDoc.set(updates);
     } else {
       await deviceDoc.set(updates, SetOptions(merge: true));
+    }
+
+    // Clean up stale legacy ghost "SmartPlant-ESP32" if a real hardware probe exists
+    if (effectiveDeviceId != 'SmartPlant-ESP32') {
+      try {
+        final ghostRef = _firestore.collection('iot_devices').doc('SmartPlant-ESP32');
+        final ghostSnap = await ghostRef.get();
+        if (ghostSnap.exists) {
+          await ghostRef.delete();
+        }
+      } catch (_) {}
     }
   }
 }

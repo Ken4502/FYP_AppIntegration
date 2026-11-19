@@ -564,7 +564,9 @@ Generated on: ${DateTime.now().toLocal()}
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const IotSetupWizardScreen(),
+                            builder: (context) => IotSetupWizardScreen(
+                              initialDeviceId: widget.device.id,
+                            ),
                           ),
                         );
                       },

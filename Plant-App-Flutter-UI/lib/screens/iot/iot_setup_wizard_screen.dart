@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../components/standard_app_bar.dart';
 import '../../constants.dart';
+import '../../services/iot_firestore_service.dart';
 import '../../services/iot_provisioning_service.dart';
 
 /// Standalone Isolated Wi-Fi Provisioning Screen
@@ -97,7 +98,7 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
 
         setState(() {
           _isCheckingHotspot = false;
-          _detectedDeviceId = (devId != null && devId.isNotEmpty) ? devId : (_detectedDeviceId ?? 'SmartPlant-ESP32');
+          _detectedDeviceId = (devId != null && devId.isNotEmpty) ? devId : (_detectedDeviceId ?? widget.initialDeviceId);
           _hotspotState = state;
           _currentStep = 1; // Advance directly to Wi-Fi selection!
         });
@@ -147,7 +148,6 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
   Future<void> _transmitCredentialsToSoftAP() async {
     final ssid = _isManualSsid ? _manualSsidController.text.trim() : (_selectedSsid ?? '').trim();
     final pass = _passwordController.text.trim();
-    final deviceId = _detectedDeviceId ?? (widget.initialDeviceId ?? 'SmartPlant-ESP32');
 
     if (ssid.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -159,6 +159,23 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
       );
       return;
     }
+
+    // Resolve target hardware ID: prioritize detected ID, then widget initial ID,
+    // then existing user hardware from Firestore so reconnection NEVER spawns a duplicate!
+    String deviceId = _detectedDeviceId ?? (widget.initialDeviceId ?? '');
+    if (deviceId.isEmpty || deviceId == 'SmartPlant-ESP32') {
+      try {
+        final existing = await IotFirestoreService().getUserDevices();
+        if (existing.isNotEmpty) {
+          deviceId = existing.first.id;
+        }
+      } catch (_) {}
+    }
+    if (deviceId.isEmpty) {
+      deviceId = 'SmartPlant-ESP32';
+    }
+
+    if (!mounted) return;
 
     // 1. Immediately update UI state and show connecting modal dialog (instant feedback)
     setState(() {

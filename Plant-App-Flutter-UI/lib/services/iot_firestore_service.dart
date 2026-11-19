@@ -84,8 +84,73 @@ class IotFirestoreService {
         }
       } catch (_) {}
 
-      return list;
+      return _deduplicateDevices(list);
     });
+  }
+
+  /// Deduplicates device lists in memory and cleans up any ghost/legacy placeholder documents.
+  /// 1. Removes documents with identical IDs.
+  /// 2. If a canonical hardware device (MAC-based, e.g. SmartPlant-20FB3F) exists, any generic
+  ///    placeholder ("SmartPlant-ESP32") is discarded and cleaned up from Firestore.
+  /// 3. If two records share the same local station IP, keeps the freshest authoritative one.
+  List<IotDevice> _deduplicateDevices(List<IotDevice> rawList) {
+    if (rawList.isEmpty) return [];
+
+    // Step 1: Deduplicate by exact device ID
+    final Map<String, IotDevice> byId = {};
+    for (final dev in rawList) {
+      byId[dev.id] = dev;
+    }
+
+    final List<IotDevice> uniqueList = byId.values.toList();
+    final bool hasCanonicalHardware = uniqueList.any((d) => _isCanonicalHardwareId(d.id));
+
+    // Step 2: Purge generic prototype "SmartPlant-ESP32" if real hardware exists
+    if (hasCanonicalHardware) {
+      uniqueList.removeWhere((d) {
+        if (d.id == 'SmartPlant-ESP32') {
+          // Clean up orphaned legacy doc in background
+          _devicesCol.doc('SmartPlant-ESP32').delete().catchError((_) {});
+          return true;
+        }
+        return false;
+      });
+    }
+
+    // Step 3: Deduplicate by Station IP (same physical board on same local subnet)
+    final Map<String, IotDevice> byIp = {};
+    final List<IotDevice> result = [];
+
+    for (final dev in uniqueList) {
+      final ip = dev.stationIp?.trim();
+      if (ip != null && ip.isNotEmpty && ip != '0.0.0.0' && ip != '192.168.4.1') {
+        if (byIp.containsKey(ip)) {
+          final existing = byIp[ip]!;
+          final bool replaceExisting = (!_isCanonicalHardwareId(existing.id) && _isCanonicalHardwareId(dev.id)) ||
+              dev.lastSeen.isAfter(existing.lastSeen);
+
+          if (replaceExisting) {
+            result.remove(existing);
+            result.add(dev);
+            byIp[ip] = dev;
+            if (existing.id == 'SmartPlant-ESP32') {
+              _devicesCol.doc(existing.id).delete().catchError((_) {});
+            }
+          }
+        } else {
+          byIp[ip] = dev;
+          result.add(dev);
+        }
+      } else {
+        result.add(dev);
+      }
+    }
+
+    return result;
+  }
+
+  bool _isCanonicalHardwareId(String id) {
+    return RegExp(r'^SmartPlant-[A-Fa-f0-9]{4,12}$').hasMatch(id);
   }
 
   /// Single fetch of all user devices
@@ -111,7 +176,7 @@ class IotFirestoreService {
         }
       }
 
-      return list;
+      return _deduplicateDevices(list);
     } catch (_) {
       return [];
     }

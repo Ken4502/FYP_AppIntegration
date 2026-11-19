@@ -46,6 +46,7 @@ class IotDevice {
   String? systemState;
   String? stateReason;
   int reconnectAttempts;
+  String? stationIp;
 
   IotDevice({
     required this.id,
@@ -55,6 +56,7 @@ class IotDevice {
     this.isBluetoothConnected = false,
     this.isWifiConnected = true,
     this.wifiSsid,
+    this.stationIp,
     this.ntfyTopic = 'urbangreen_esp32_alerts',
     this.batteryLevel = 95,
     this.signalStrength = -58,
@@ -233,6 +235,7 @@ class IotDevice {
       'systemState': systemState,
       'stateReason': stateReason,
       'reconnectAttempts': reconnectAttempts,
+      'stationIp': stationIp,
     };
   }
 
@@ -339,6 +342,7 @@ class IotDevice {
       systemState: map['systemState'] as String?,
       stateReason: map['stateReason'] as String?,
       reconnectAttempts: (map['reconnectAttempts'] as num?)?.toInt() ?? 0,
+      stationIp: map['stationIp'] as String?,
     );
   }
 }
