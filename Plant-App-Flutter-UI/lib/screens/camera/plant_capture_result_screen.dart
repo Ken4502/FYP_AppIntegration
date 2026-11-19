@@ -555,7 +555,11 @@ class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
             // 4-Category Multi-Dimension Quick Scorecard
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: kDefaultPadding),
-              child: _buildMultiCategoryQuickCard(context, diagnosis.multiCategory),
+              child: _buildMultiCategoryQuickCard(
+                context,
+                diagnosis.multiCategory,
+                holeAnalysis: diagnosis.holeAnalysis,
+              ),
             ),
 
             const SizedBox(height: 16),
@@ -701,8 +705,9 @@ class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
 
   Widget _buildMultiCategoryQuickCard(
     BuildContext context,
-    MultiCategoryDiagnosis multiCategory,
-  ) {
+    MultiCategoryDiagnosis multiCategory, {
+    FoliarHoleAnalysis? holeAnalysis,
+  }) {
     final theme = Theme.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -785,6 +790,43 @@ class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
               ),
             );
           }),
+
+          // Optional Foliar Hole status row
+          if (holeAnalysis != null && holeAnalysis.hasHoles) ...[
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: holeAnalysis.causeColor.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: holeAnalysis.causeColor.withValues(alpha: 0.25), width: 0.8),
+              ),
+              child: Row(
+                children: [
+                  Icon(holeAnalysis.causeIcon, size: 14, color: holeAnalysis.causeColor),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      "Foliar Holes: ${holeAnalysis.causeTitle}",
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: holeAnalysis.causeColor,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    holeAnalysis.holeCountEstimate,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: holeAnalysis.causeColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

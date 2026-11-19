@@ -38,6 +38,8 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
   final GlobalKey _pestKey = GlobalKey();
   final GlobalKey _rustKey = GlobalKey();
   final GlobalKey _wateringKey = GlobalKey();
+  final GlobalKey _holeKey = GlobalKey();
+  final Map<String, int> _userClarifierAnswers = {};
 
   @override
   void initState() {
@@ -116,6 +118,58 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
           coAlerts: coAlerts,
           predictions: diagnosis?.predictions ?? [],
           abiotic: abiotic,
+        );
+
+    final holeAnalysis = diagnosis?.holeAnalysis ??
+        PlantDiagnosisResponse.synthesizeHoleAnalysis(
+          species: diagnosis?.species ??
+              SpeciesInfo(name: plantName, confidence: confidence, detectedMode: '', topCandidates: []),
+          diagnosis: diagnosis?.diagnosis ??
+              DiagnosisInfo(
+                conditionName: conditionName,
+                category: category,
+                isHealthy: isHealthy,
+                confidence: confidence,
+                severity: severity,
+              ),
+          spots: spots ?? SpotsInfo(hasSpots: false, spotsCount: 0, infectedAreaPct: 0.0, statusMessage: ''),
+          abiotic: abiotic,
+          predictions: diagnosis?.predictions ?? [],
+          coAlerts: coAlerts,
+        );
+
+    final ruledOutConditions = diagnosis?.ruledOutConditions ??
+        PlantDiagnosisResponse.synthesizeRuledOutConditions(
+          species: diagnosis?.species ??
+              SpeciesInfo(name: plantName, confidence: confidence, detectedMode: '', topCandidates: []),
+          diagnosis: diagnosis?.diagnosis ??
+              DiagnosisInfo(
+                conditionName: conditionName,
+                category: category,
+                isHealthy: isHealthy,
+                confidence: confidence,
+                severity: severity,
+              ),
+          spots: spots ?? SpotsInfo(hasSpots: false, spotsCount: 0, infectedAreaPct: 0.0, statusMessage: ''),
+          abiotic: abiotic,
+          predictions: diagnosis?.predictions ?? [],
+        );
+
+    final clarifierQuestions = diagnosis?.clarifierQuestions ??
+        PlantDiagnosisResponse.synthesizeClarifierQuestions(
+          species: diagnosis?.species ??
+              SpeciesInfo(name: plantName, confidence: confidence, detectedMode: '', topCandidates: []),
+          diagnosis: diagnosis?.diagnosis ??
+              DiagnosisInfo(
+                conditionName: conditionName,
+                category: category,
+                isHealthy: isHealthy,
+                confidence: confidence,
+                severity: severity,
+              ),
+          spots: spots ?? SpotsInfo(hasSpots: false, spotsCount: 0, infectedAreaPct: 0.0, statusMessage: ''),
+          abiotic: abiotic,
+          holeAnalysis: holeAnalysis,
         );
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -271,7 +325,26 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
             // =================================================================
             // TOP SECTION: EXECUTIVE SUMMARY OF ALL 4 CATEGORIES (SEVERITY ORDER)
             // =================================================================
-            _buildExecutiveSummaryScorecard(context, multiCategory, isDark),
+            _buildExecutiveSummaryScorecard(
+              context,
+              multiCategory,
+              isDark,
+              holeAnalysis: holeAnalysis,
+            ),
+
+            const SizedBox(height: 20),
+
+            // =================================================================
+            // OPTION 2: CLINICAL DIFFERENTIAL TRIAGE (INTERACTIVE CLARIFIERS)
+            // =================================================================
+            _buildInteractiveClarifierTriageWidget(context, clarifierQuestions, isDark),
+
+            const SizedBox(height: 20),
+
+            // =================================================================
+            // FOLIAR HOLE DETECTION & CAUSE ATTRIBUTION (SHOT-HOLE, PEST, FENESTRATION)
+            // =================================================================
+            _buildFoliarHoleAnalysisCard(context, holeAnalysis, isDark),
 
             const SizedBox(height: 24),
 
@@ -329,6 +402,14 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
               child: _buildWateringDetailCard(context, multiCategory.watering, abiotic, plantName, isDark),
             ),
             const SizedBox(height: 24),
+
+            // =================================================================
+            // OPTION 3: RULED-OUT CONDITIONS (EXPLAINABLE AI / DIFFERENTIAL ELIMINATION)
+            // =================================================================
+            if (ruledOutConditions.isNotEmpty) ...[
+              _buildRuledOutConditionsSection(context, ruledOutConditions, isDark),
+              const SizedBox(height: 24),
+            ],
 
             // Quantitative PDI Severity Meter (if available)
             if (pdi != null) ...[
@@ -433,8 +514,9 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
   Widget _buildExecutiveSummaryScorecard(
     BuildContext context,
     MultiCategoryDiagnosis multiCategory,
-    bool isDark,
-  ) {
+    bool isDark, {
+    FoliarHoleAnalysis? holeAnalysis,
+  }) {
     final isClear = multiCategory.isEntirelyClear;
     final threatCount = multiCategory.activeThreatCount;
 
@@ -569,6 +651,51 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
               ],
             ),
           ),
+
+          // Optional Foliar Hole Status Link
+          if (holeAnalysis != null && holeAnalysis.hasHoles) ...[
+            InkWell(
+              onTap: () => _scrollToCategory(_holeKey),
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(19)),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: holeAnalysis.causeColor.withValues(alpha: 0.08),
+                  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(19)),
+                  border: Border(
+                    top: BorderSide(
+                      color: isDark ? kDarkBorderSubtle : kBorderSubtle,
+                      width: 0.8,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(holeAnalysis.causeIcon, size: 16, color: holeAnalysis.causeColor),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        "Foliar Perforations: ${holeAnalysis.causeTitle} (${holeAnalysis.holeCountEstimate})",
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: holeAnalysis.causeColor,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      "Inspect →",
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.bold,
+                        color: holeAnalysis.causeColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1292,6 +1419,752 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // ===========================================================================
+  // OPTION 2: CLINICAL DIFFERENTIAL TRIAGE (INTERACTIVE CLARIFIERS)
+  // ===========================================================================
+  Widget _buildInteractiveClarifierTriageWidget(
+    BuildContext context,
+    List<DiagnosticClarifierQuestion> questions,
+    bool isDark,
+  ) {
+    if (questions.isEmpty) return const SizedBox.shrink();
+
+    final answeredCount = _userClarifierAnswers.length;
+    final totalCount = questions.length;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? kDarkCardColor : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFF6366F1).withValues(alpha: 0.35),
+          width: 1.4,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Banner
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF6366F1).withValues(alpha: 0.08),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(19)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.psychology_alt_rounded, color: Color(0xFF6366F1), size: 20),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Clinical Differential Triage",
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? kDarkTextPrimary : kTextPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        "Disambiguate overlapping symptoms with physical tactile checks",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? kDarkTextSecondary : kTextSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    "$answeredCount / $totalCount verified",
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF4F46E5),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Questions List
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "When visual symptoms overlap (e.g. rust spores vs sunburn scorch, or underwatering vs root rot), answer these quick physical checks to confirm diagnosis confidence:",
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.4,
+                    color: isDark ? kDarkTextSecondary : kTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                ...questions.asMap().entries.map((entry) {
+                  final qIndex = entry.key;
+                  final q = entry.value;
+                  final selectedOpt = _userClarifierAnswers[q.id];
+
+                  return Container(
+                    margin: EdgeInsets.only(bottom: qIndex < questions.length - 1 ? 14 : 0),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.black.withValues(alpha: 0.2) : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: selectedOpt != null
+                            ? const Color(0xFF6366F1).withValues(alpha: 0.4)
+                            : (isDark ? kDarkBorderSubtle : kBorderSubtle),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                "Q${qIndex + 1}",
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF6366F1),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                q.questionText,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? kDarkTextPrimary : kTextPrimary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          "Clinical rationale: ${q.rationale}",
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontStyle: FontStyle.italic,
+                            color: isDark ? kDarkTextSecondary : kTextSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Options
+                        ...q.options.asMap().entries.map((optEntry) {
+                          final optIndex = optEntry.key;
+                          final opt = optEntry.value;
+                          final isSelected = selectedOpt == optIndex;
+
+                          return InkWell(
+                            onTap: () {
+                              setState(() {
+                                _userClarifierAnswers[q.id] = optIndex;
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? const Color(0xFF6366F1).withValues(alpha: 0.12)
+                                    : (isDark ? kDarkCardColor : Colors.white),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? const Color(0xFF6366F1)
+                                      : (isDark ? kDarkBorderSubtle : kBorderSubtle),
+                                  width: isSelected ? 1.4 : 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                    size: 16,
+                                    color: isSelected
+                                        ? const Color(0xFF6366F1)
+                                        : (isDark ? Colors.white38 : Colors.black38),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      opt.text,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                        color: isDark ? kDarkTextPrimary : kTextPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+
+                        // Dynamic Feedback Banner when selected
+                        if (selectedOpt != null) ...[
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.verified_rounded, size: 14, color: Color(0xFF10B981)),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    "Clinical triage match: ${q.options[selectedOpt].indication} (${q.options[selectedOpt].confidenceImpact})",
+                                    style: const TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF047857),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // FOLIAR HOLE DETECTION & INTELLIGENT CAUSE ATTRIBUTION CARD
+  // ===========================================================================
+  Widget _buildFoliarHoleAnalysisCard(
+    BuildContext context,
+    FoliarHoleAnalysis hole,
+    bool isDark,
+  ) {
+    final color = hole.causeColor;
+    final icon = hole.causeIcon;
+
+    return Container(
+      key: _holeKey,
+      decoration: BoxDecoration(
+        color: isDark ? kDarkCardColor : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: color.withValues(alpha: 0.35),
+          width: 1.4,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Banner
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.08),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(19)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: color, size: 20),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Foliar Hole & Perforation Analysis",
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? kDarkTextPrimary : kTextPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        hole.causeTitle,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.bold,
+                          color: color,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    "${hole.confidence.toStringAsFixed(1)}% Conf",
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Perforations Stats Strip
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.black.withValues(alpha: 0.15) : const Color(0xFFF8FAFC),
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark ? kDarkBorderSubtle : kBorderSubtle,
+                  width: 0.8,
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(Icons.adjust_rounded, size: 14, color: color),
+                      const SizedBox(width: 6),
+                      Text(
+                        "Perforations: ${hole.holeCountEstimate}",
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? kDarkTextPrimary : kTextPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: hole.hasHoles ? color.withValues(alpha: 0.12) : const Color(0xFF10B981).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    hole.hasHoles ? "Holes Present" : "Zero Holes",
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: hole.hasHoles ? color : const Color(0xFF10B981),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Body Content
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Summary
+                Text(
+                  hole.summary,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: isDark ? kDarkTextPrimary : kTextPrimary,
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // Visual Clues Observed
+                if (hole.visualClues.isNotEmpty) ...[
+                  Text(
+                    "Visual Micro-Indicators Observed:",
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? kDarkTextPrimary : kTextPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  ...hole.visualClues.map(
+                    (clue) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.check_circle_outline_rounded, size: 14, color: color),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              clue,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                height: 1.3,
+                                color: isDark ? kDarkTextSecondary : kTextSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+
+                // Likely Culprits
+                if (hole.likelyCulprits.isNotEmpty) ...[
+                  Text(
+                    "Likely Culprits / Biological Etiology:",
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? kDarkTextPrimary : kTextPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: hole.likelyCulprits.map(
+                      (culprit) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.04),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+                        ),
+                        child: Text(
+                          culprit,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? kDarkTextPrimary : kTextPrimary,
+                          ),
+                        ),
+                      ),
+                    ).toList(),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+
+                // Recommended Action
+                if (hole.recommendedAction.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: color.withValues(alpha: 0.25)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.tips_and_updates_rounded, size: 18, color: color),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Recommended Care Protocol:",
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: color,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                hole.recommendedAction,
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  height: 1.35,
+                                  color: isDark ? kDarkTextPrimary : kTextPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
+                // Badges
+                if (hole.badges.isNotEmpty)
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: hole.badges.map(
+                      (badge) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          badge,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: color,
+                          ),
+                        ),
+                      ),
+                    ).toList(),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // OPTION 3: RULED-OUT CONDITIONS (EXPLAINABLE AI / DIFFERENTIAL ELIMINATION)
+  // ===========================================================================
+  Widget _buildRuledOutConditionsSection(
+    BuildContext context,
+    List<RuledOutCondition> ruledOut,
+    bool isDark,
+  ) {
+    if (ruledOut.isEmpty) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.fact_check_outlined, color: Color(0xFF0D9488), size: 22),
+            const SizedBox(width: 8),
+            Text(
+              "Ruled-Out Conditions (Explainable AI)",
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: isDark ? kDarkTextPrimary : kTextPrimary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          "To eliminate misassumptions and symptom clashes, the AI systematically tested and eliminated these common mimic conditions:",
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? kDarkTextSecondary : kTextSecondary,
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        ...ruledOut.map(
+          (cond) => Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isDark ? kDarkCardColor : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark ? kDarkBorderSubtle : kBorderSubtle,
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.cancel_outlined, color: Colors.redAccent, size: 16),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            cond.conditionName,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? kDarkTextPrimary : kTextPrimary,
+                            ),
+                          ),
+                          Text(
+                            "Dimension: ${cond.category}",
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: isDark ? kDarkTextSecondary : kTextSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        cond.rulingBadge,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF059669),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                // Reason
+                Text(
+                  cond.reasonRuledOut,
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.35,
+                    color: isDark ? kDarkTextPrimary : kTextPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Evidence Examined
+                if (cond.evidenceExamined.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.black.withValues(alpha: 0.2) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Clinical Evidence Checked:",
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        ...cond.evidenceExamined.map(
+                          (ev) => Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.remove, size: 12, color: Color(0xFF64748B)),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    ev,
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      color: isDark ? kDarkTextSecondary : kTextSecondary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 

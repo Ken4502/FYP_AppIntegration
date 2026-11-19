@@ -546,6 +546,152 @@ class PlantApiService {
           'badges': ['Optimal Turgor', 'Hydration Equilibrium'],
         },
       },
+      'hole_analysis': {
+        'has_holes': true,
+        'hole_count_estimate': '6 natural split fenestrations',
+        'hole_cause_type': 'natural_fenestration',
+        'cause_title': 'Natural Botanical Fenestrations (Monstera)',
+        'confidence': 96.5,
+        'summary':
+            'The perforations and splits observed are natural evolutionary leaf fenestrations characteristic of Monstera deliciosa to maximize sunlight penetration and wind tolerance. They are completely healthy morphological traits, NOT pest bite holes or disease wounds.',
+        'visual_clues': [
+          'Smooth, glossy, green perforation margins with intact epidermal wax',
+          'Absence of chlorotic yellow or reddish-brown necrotic halos',
+          'Symmetrical leaf blade division along main lateral leaf veins',
+          'Healthy, turgid cellular margins with zero pathogen ooze',
+        ],
+        'likely_culprits': [
+          'Evolutionary Botanical Trait (Monstera deliciosa)',
+          'Natural Tropical Adaptation to Rainforest Canopies',
+        ],
+        'recommended_action':
+            'No treatment needed! Natural fenestrations signify a thriving, mature Monstera receiving healthy indirect light.',
+        'badges': ['Natural Fenestration', 'Healthy Foliage', 'Zero Pathogen', 'Non-Harmful'],
+      },
+      'ruled_out_conditions': [
+        {
+          'condition_name': 'Fungal Rust Infection (Pucciniales)',
+          'category': 'Rust Fungal Infection',
+          'reason_ruled_out':
+              'Microscopic texture and lesion distribution show no raised powdery orange pustules or urediniospores; lesions are water-soaked with translucent borders rather than rust dust.',
+          'evidence_examined': [
+            'Absence of raised pustular eruptive structures',
+            'Zero powdery spore transfer on tactile simulation',
+            'Lesions follow leaf veins with distinct chlorotic halo',
+          ],
+          'ruling_badge': 'Ruled Out (96.4% Disproved)',
+        },
+        {
+          'condition_name': 'Abiotic Photo-Bleaching / Sunburn Scorch',
+          'category': 'Abiotic Light Stress',
+          'reason_ruled_out':
+              'Lesions feature irregular expanding borders with yellow chlorotic halos typical of vascular bacterial invasion, rather than uniform paper-thin bleaching across top exposed sunlit zones.',
+          'evidence_examined': [
+            'Asymmetric lesion geometry across shaded leaf sections',
+            'Presence of pathogenic water-soaked margins',
+            'Damage not confined exclusively to horizontal leaf tops',
+          ],
+          'ruling_badge': 'Ruled Out (94.8% Disproved)',
+        },
+        {
+          'condition_name': 'Biotic Chewing Insect Foliivory',
+          'category': 'Pest / Insect Infestation',
+          'reason_ruled_out':
+              'Leaf blade margins and lamina remain structurally intact without scalloped mandible bites, chewed leaf chunks, or caterpillar frass droppings.',
+          'evidence_examined': [
+            'Intact leaf boundary contour without chewing serration',
+            'Absence of fecal frass deposits around damaged areas',
+            'Pathology is cellular necrotic decay rather than physical tissue excision',
+          ],
+          'ruling_badge': 'Ruled Out (93.1% Disproved)',
+        },
+      ],
+      'clarifier_questions': [
+        {
+          'id': 'leaf_texture',
+          'question_text': 'Tactile Foliar Texture: How do the discolored spots or leaf margins feel when lightly touched?',
+          'rationale':
+              'Differentiates powdery fungal rust spores from papery drought desiccation and mushy bacterial soft rot.',
+          'options': [
+            {
+              'text': 'Dry, crispy, and brittle (papery texture)',
+              'indication': 'Strongly supports Abiotic Dehydration / Underwatering or Sunburn Scorch',
+              'target_category': 'watering',
+              'confidence_impact': '+18% Drought Stress Confidence',
+            },
+            {
+              'text': 'Powdery or dusty residue rubs off on finger',
+              'indication': 'Strongly indicates active Fungal Rust (Pucciniales) or Powdery Mildew spores',
+              'target_category': 'rust',
+              'confidence_impact': '+22% Rust Fungi Confidence',
+            },
+            {
+              'text': 'Soft, soggy, translucent, or water-soaked',
+              'indication': 'Strongly indicates Pathogenic Bacterial Leaf Spot or Substrate Waterlogging',
+              'target_category': 'microorganism',
+              'confidence_impact': '+20% Bacterial Infection Confidence',
+            },
+          ],
+        },
+        {
+          'id': 'soil_moisture_scent',
+          'question_text': 'Substrate Moisture & Scent: Check the potting mix 2 inches deep with your finger:',
+          'rationale':
+              'Eliminates clinical ambiguity between underwatering drought wilting and overwatering root hypoxia.',
+          'options': [
+            {
+              'text': 'Bone dry, dusty, and pulling away from the pot sides',
+              'indication': 'Confirms acute Root Zone Moisture Deficit (Underwatering)',
+              'target_category': 'watering',
+              'confidence_impact': '+25% Underwatering Confirmation',
+            },
+            {
+              'text': 'Saturated, soggy, or emits a sour, swampy rot smell',
+              'indication': 'Confirms Anaerobic Root Suffocation / Overwatering & Pythium rot',
+              'target_category': 'watering',
+              'confidence_impact': '+25% Overwatering / Root Hypoxia Confirmation',
+            },
+            {
+              'text': 'Cool, slightly moist, with a fresh pleasant earthy scent',
+              'indication': 'Confirms Substrate Hydration is in the Optimal Target Range',
+              'target_category': 'watering',
+              'confidence_impact': '+20% Optimal Hydration Confirmation',
+            },
+          ],
+        },
+        {
+          'id': 'hole_margin_check',
+          'question_text': 'Foliar Perforations & Margin Check: Inspect the edges of any holes or damaged spots:',
+          'rationale':
+              'Differentiates chewing insect bites from fungal shot-holes, natural Monstera fenestrations, and physical tears.',
+          'options': [
+            {
+              'text': 'Jagged, scalloped edges with raw green margins (chunks missing)',
+              'indication': 'Confirms Biotic Chewing Pests (Caterpillars, Beetles, Grasshoppers)',
+              'target_category': 'pest_insect',
+              'confidence_impact': '+24% Chewing Pest Confirmation',
+            },
+            {
+              'text': 'Circular hole ringed by a dark red, brown, or yellow halo',
+              'indication': 'Confirms Pathological Shot-Hole Fungal or Bacterial Necrosis',
+              'target_category': 'microorganism',
+              'confidence_impact': '+22% Pathological Shot-Hole Confirmation',
+            },
+            {
+              'text': 'Smooth, clean, green edges with zero browning (Monstera)',
+              'indication': 'Confirms completely Natural Evolutionary Leaf Fenestration',
+              'target_category': 'pest_insect',
+              'confidence_impact': '+25% Natural Botanical Fenestration Confirmation',
+            },
+            {
+              'text': 'Clean linear tear or rip along leaf veins without halos',
+              'indication': 'Confirms Non-Pathological Mechanical Physical Damage (handling/pets)',
+              'target_category': 'watering',
+              'confidence_impact': '+18% Mechanical Damage Confirmation',
+            },
+          ],
+        },
+      ],
     });
   }
 
