@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,8 @@ import 'package:urbangreen/services/care_log_service.dart';
 import 'package:urbangreen/services/low_moisture_decision_service.dart';
 import 'package:urbangreen/services/platform/web_hardware_bridge.dart';
 import 'package:urbangreen/services/plant_service.dart';
+import 'package:urbangreen/services/ntfy_notification_service.dart';
+import 'package:urbangreen/services/iot_presence_watchdog_service.dart';
 import 'package:urbangreen/theme.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
@@ -28,6 +31,10 @@ void main() async {
   await CareLogService().init();
   // Initialize Low Moisture Decision & Notification service with navigator key
   LowMoistureDecisionService().init(appNavigatorKey);
+  // Start global ntfy.sh notification listener
+  unawaited(NtfyNotificationService().start());
+  // Start active IoT presence and heartbeat watchdog
+  IotPresenceWatchdogService().init();
 
   // Custom user-friendly error widget builder across the app
   ErrorWidget.builder = (FlutterErrorDetails details) {

@@ -220,6 +220,41 @@ class IotFirestoreService {
     );
   }
 
+  /// Updates systemState and stateReason on an IoT device document
+  Future<void> setDeviceSystemState(
+    String deviceId,
+    String systemState,
+    String reason,
+  ) async {
+    try {
+      await _devicesCol.doc(deviceId).set({
+        'systemState': systemState,
+        'stateReason': reason,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+  }
+
+  /// Mark device as offline when heartbeat times out
+  Future<void> markDeviceOffline(String deviceId, [String reason = 'Heartbeat timeout']) async {
+    try {
+      await _devicesCol.doc(deviceId).set({
+        'systemState': 'OFFLINE',
+        'stateReason': reason,
+        'isWifiConnected': false,
+        'wifiConnected': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await addDeviceLog(
+        deviceId,
+        title: 'Device Offline',
+        detail: reason,
+        type: IotLogType.network,
+      );
+    } catch (_) {}
+  }
+
   /// Trigger a manual water pulse (e.g. 3 to 5 seconds) via pendingCommand in Firestore
   Future<void> triggerManualPulse(String deviceId, {int durationSeconds = 3}) async {
     final cmdId = 'cmd_${DateTime.now().millisecondsSinceEpoch}';

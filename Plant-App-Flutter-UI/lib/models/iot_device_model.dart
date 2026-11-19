@@ -88,10 +88,11 @@ class IotDevice {
            ? List<String>.from(linkedUserIds)
            : (userId != null && userId.isNotEmpty ? [userId] : []);
 
-  /// Computed dynamic Online / Offline status based on 2-minute heartbeat window
+  /// Computed dynamic Online / Offline status based on 90-second heartbeat window
   bool get isOnline {
+    if (systemState == 'OFFLINE') return false;
     final now = DateTime.now();
-    return now.difference(lastSeen).inSeconds < 120;
+    return now.difference(lastSeen).inSeconds < 90;
   }
 
   /// Whether the ESP32 is currently in grace fallback hotspot mode due to lost Wi-Fi
@@ -100,7 +101,7 @@ class IotDevice {
   /// Human-friendly display label for hardware state
   String get stateDisplayLabel {
     if (isGraceHotspotActive) return 'Grace Hotspot (Wi-Fi Down)';
-    if (!isOnline) return 'Offline';
+    if (!isOnline || systemState == 'OFFLINE') return 'Offline';
     switch (systemState) {
       case 'CONNECTED_ONLINE':
         return 'Online';
@@ -116,6 +117,8 @@ class IotDevice {
         return 'Unconfigured';
       case 'FACTORY_RESETTING':
         return 'Resetting / Wiping';
+      case 'OFFLINE':
+        return 'Offline';
       default:
         return 'Online';
     }
