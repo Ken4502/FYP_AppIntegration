@@ -75,7 +75,7 @@ rules_version = '2';
 // Collection: iot_devices
 // Document ID: {deviceId}
 // Fields:
-//   - id: string, userId: string, registeredBy: string, name: string, ssid: string, wifiSsid: string,
+//   - id: string, userId: string, registeredBy: string, linkedUserIds: list, name: string, ssid: string, wifiSsid: string,
 //     homeSsid: string, firmwareVersion: string, lastSeen: timestamp, lastReadingAt: timestamp,
 //     lastWateredAt: timestamp, lastRegistered: string, lastUpdated: timestamp,
 //     createdAt: timestamp, updatedAt: timestamp, moisturePercent: number, moisture: number,
@@ -90,7 +90,7 @@ rules_version = '2';
 //     lowMoistureAlertEnabled: bool, lowMoistureIgnoredUntil: timestamp, lowMoistureAlwaysIgnored: bool,
 //     hostPhone: string, hostDeviceId: string, stationIp: string, status: string, msg: string
 // Access: Authenticated users can read telemetry; device owner, admin, or unauthenticated ESP32 hardware REST API can register/upsert;
-//         ESP32 REST API can update operational telemetry; owner or admin can delete.
+//         device owner, admin, or linked user can manage device settings or delete; accounts can link/unlink; ESP32 REST API can update operational telemetry.
 //
 // Subcollection: iot_devices/{deviceId}/logs
 // Document ID: {logId}
@@ -159,6 +159,14 @@ service cloud.firestore {
              (request.resource.data[field] is string && request.resource.data[field].size() <= 64);
     }
 
+    function validOptionalStringList(field, maxCount, maxItemLen) {
+      return !(field in request.resource.data) ||
+             request.resource.data[field] == null ||
+             (request.resource.data[field] is list &&
+              request.resource.data[field].size() <= maxCount &&
+              request.resource.data[field].join('').size() <= (maxCount * maxItemLen));
+    }
+
     // ===============================================================
     // Domain Validators
     // ===============================================================
@@ -185,7 +193,7 @@ service cloud.firestore {
     function isValidIotDevice() {
       let d = request.resource.data;
       let allowedDeviceKeys = [
-        'id', 'device', 'userId', 'registeredBy', 'name', 'ssid', 'wifiSsid', 'homeSsid',
+        'id', 'device', 'userId', 'registeredBy', 'linkedUserIds', 'name', 'ssid', 'wifiSsid', 'homeSsid',
         'firmwareVersion', 'lastSeen', 'lastReadingAt', 'lastWateredAt',
         'lastRegistered', 'lastUpdated', 'createdAt', 'updatedAt',
         'moisturePercent', 'moisture', 'moistureLevel', 'rawADC', 'rawAdc', 'raw',
@@ -211,6 +219,7 @@ service cloud.firestore {
              validOptionalString('stationIp', 64) &&
              validOptionalString('userId', 128) &&
              validOptionalString('registeredBy', 128) &&
+             validOptionalStringList('linkedUserIds', 50, 128) &&
              validOptionalString('firmwareVersion', 64) &&
              validOptionalTimestamp('createdAt') &&
              true &&
@@ -374,16 +383,22 @@ service cloud.firestore {
                          ((!('id' in request.resource.data) || request.resource.data.id == deviceId || request.resource.data.id == null) &&
                           (!('device' in request.resource.data) || request.resource.data.device == deviceId || request.resource.data.device == null))
                        );
-      // Updates: owner/admin or micro-controller ESP32 telemetry updates over REST API
+      // Updates: owner/creator, linked user, linking/unlinking own account, admin, or micro-controller ESP32 telemetry updates over REST API
       allow update: if isValidIotDevice() &&
         (
-          // Authenticated owner or admin
+          // Authenticated operations
           (signedIn() && (
+            // a) user is owner/creator
             (resource.data.userId == request.auth.uid) ||
             (resource.data.registeredBy == request.auth.uid) ||
+            // b) user is already a linked user
+            ('linkedUserIds' in resource.data && request.auth.uid in resource.data.linkedUserIds) ||
+            // c) user is linking or unlinking their own account
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['linkedUserIds', 'updatedAt']) ||
+            // d) admin
             isAdmin()
           )) ||
-          // Unauthenticated ESP32 hardware telemetry update
+          // e) Unauthenticated ESP32 hardware telemetry update
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'lastSeen', 'lastReadingAt', 'lastWateredAt', 'lastUpdated', 'updatedAt',
             'moisturePercent', 'moisture', 'moistureLevel', 'rawADC', 'rawAdc', 'raw',
@@ -397,10 +412,11 @@ service cloud.firestore {
           ])
         );
 
-      // Delete: device owner or admin
+      // Delete: device owner, admin, or a linked user
       allow delete: if signedIn() && (
         (resource.data.userId == request.auth.uid) ||
         (resource.data.registeredBy == request.auth.uid) ||
+        ('linkedUserIds' in resource.data && request.auth.uid in resource.data.linkedUserIds) ||
         isAdmin()
       );
 

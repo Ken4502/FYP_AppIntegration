@@ -49,35 +49,133 @@ class IotFirestoreService {
   /// Real-time stream of all devices registered to the given user or current user
   Stream<List<IotDevice>> streamUserDevices([String? targetUserId]) {
     final uid = targetUserId ?? currentUserId;
-    if (uid == null) {
+    if (uid == null || uid.isEmpty) {
       return Stream.value([]);
     }
 
-    // Listen to all devices where userId or registeredBy matches
+    // Listen to all devices where linkedUserIds contains current user
     return _devicesCol
-        .where('userId', isEqualTo: uid)
+        .where('linkedUserIds', arrayContains: uid)
         .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) {
+        .asyncMap((snapshot) async {
+      final List<IotDevice> list = snapshot.docs.map((doc) {
         final data = doc.data();
         data['id'] = doc.id;
         return IotDevice.fromMap(data);
       }).toList();
+
+      // Check legacy devices where userId == uid but not yet in linkedUserIds array
+      try {
+        final legacySnap = await _devicesCol
+            .where('userId', isEqualTo: uid)
+            .limit(10)
+            .get();
+        for (final doc in legacySnap.docs) {
+          if (!list.any((d) => d.id == doc.id)) {
+            final data = doc.data();
+            data['id'] = doc.id;
+            final dev = IotDevice.fromMap(data);
+            list.add(dev);
+            // Self-heal/migrate in background
+            doc.reference.update({
+              'linkedUserIds': FieldValue.arrayUnion([uid]),
+            }).catchError((_) {});
+          }
+        }
+      } catch (_) {}
+
+      return list;
     });
   }
 
   /// Single fetch of all user devices
   Future<List<IotDevice>> getUserDevices([String? targetUserId]) async {
     final uid = targetUserId ?? currentUserId;
-    if (uid == null) return [];
+    if (uid == null || uid.isEmpty) return [];
 
     try {
-      final query = await _devicesCol.where('userId', isEqualTo: uid).get();
-      return query.docs.map((doc) {
+      final query = await _devicesCol.where('linkedUserIds', arrayContains: uid).get();
+      final list = query.docs.map((doc) {
         final data = doc.data();
         data['id'] = doc.id;
         return IotDevice.fromMap(data);
       }).toList();
+
+      // Also include legacy records if any
+      final legacySnap = await _devicesCol.where('userId', isEqualTo: uid).limit(10).get();
+      for (final doc in legacySnap.docs) {
+        if (!list.any((d) => d.id == doc.id)) {
+          final data = doc.data();
+          data['id'] = doc.id;
+          list.add(IotDevice.fromMap(data));
+        }
+      }
+
+      return list;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Links a user account to an existing IoT device (e.g. found on the same local Wi-Fi)
+  Future<void> linkUserToDevice(String deviceId, [String? targetUserId]) async {
+    final uid = targetUserId ?? currentUserId;
+    if (uid == null || uid.isEmpty) {
+      throw Exception('Authentication required to link device.');
+    }
+
+    await _devicesCol.doc(deviceId).set({
+      'linkedUserIds': FieldValue.arrayUnion([uid]),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    await addDeviceLog(
+      deviceId,
+      title: 'User Linked Device',
+      detail: 'Account ($uid) was linked to this probe over Wi-Fi network.',
+      type: IotLogType.network,
+    );
+  }
+
+  /// Unlinks a specific user account from the device (does NOT reset hardware or erase for other users)
+  Future<void> unlinkUserFromDevice(String deviceId, [String? targetUserId]) async {
+    final uid = targetUserId ?? currentUserId;
+    if (uid == null || uid.isEmpty) return;
+
+    await _devicesCol.doc(deviceId).update({
+      'linkedUserIds': FieldValue.arrayRemove([uid]),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    await addDeviceLog(
+      deviceId,
+      title: 'User Unlinked Device',
+      detail: 'Account ($uid) unlinked probe from their mobile view.',
+      type: IotLogType.network,
+    );
+  }
+
+  /// Find online devices on the same Wi-Fi network that can be linked by any account
+  Future<List<IotDevice>> discoverOnlineDevicesOnWifi({String? wifiSsid}) async {
+    try {
+      Query<Map<String, dynamic>> query = _devicesCol;
+      if (wifiSsid != null && wifiSsid.trim().isNotEmpty) {
+        query = query.where('wifiSsid', isEqualTo: wifiSsid.trim());
+      }
+      final snap = await query.limit(20).get();
+      final now = DateTime.now();
+      final List<IotDevice> results = [];
+
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        final dev = IotDevice.fromMap(data);
+        // Include devices with wifi connected or seen within 30 minutes
+        if (dev.isWifiConnected || now.difference(dev.lastSeen).inMinutes < 30) {
+          results.add(dev);
+        }
+      }
+      return results;
     } catch (_) {
       return [];
     }

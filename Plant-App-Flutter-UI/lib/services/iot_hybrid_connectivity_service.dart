@@ -365,41 +365,6 @@ class IotHybridConnectivityService {
     } catch (_) {}
   }
 
-  void _seedInitialActivityLogs() {
-    final now = DateTime.now();
-    _activityLogs.addAll([
-      IotActivityLog(
-        id: 'seed_1',
-        timestamp: now.subtract(const Duration(seconds: 40)),
-        title: 'IoT Telemetry Live',
-        detail: 'Hardware monitoring link established with sensor hub.',
-        type: IotLogType.system,
-        deviceId: registeredDeviceId,
-        deviceName: registeredDeviceName,
-      ),
-      IotActivityLog(
-        id: 'seed_2',
-        timestamp: now.subtract(const Duration(minutes: 2)),
-        title: 'Watering Completed (3s)',
-        detail: 'Water pump ran for 3 seconds. Moisture increased from 21% to 39%.',
-        type: IotLogType.watering,
-        deviceId: registeredDeviceId,
-        deviceName: registeredDeviceName,
-        durationSeconds: 3,
-        metadata: {'moistureStart': 21, 'moistureEnd': 39, 'durationSeconds': 3},
-      ),
-      IotActivityLog(
-        id: 'seed_3',
-        timestamp: now.subtract(const Duration(minutes: 5)),
-        title: 'Global Push Bridge Connected',
-        detail: 'ntfy.sh bridge synchronized for 4G/5G/Wi-Fi notifications.',
-        type: IotLogType.notifying,
-        deviceId: registeredDeviceId,
-        deviceName: registeredDeviceName,
-      ),
-    ]);
-  }
-
   void _processTelemetryForActivityLogs(Map<String, dynamic> data) {
     try {
       final int rawVal = (data['raw'] is num) ? (data['raw'] as num).toInt() : 3200;
@@ -554,6 +519,34 @@ class IotHybridConnectivityService {
   IotHybridConnectivityService._internal() {
     _notifyDevicesChanged();
     _loadPersistedDeviceConfig();
+    _initAuthListener();
+  }
+
+  void _initAuthListener() {
+    _auth?.authStateChanges().listen((user) {
+      if (user == null) {
+        clearOnLogout();
+      } else {
+        _loadPersistedDeviceConfig();
+      }
+    });
+  }
+
+  String _devicesStorageKey([String? uid]) {
+    final u = uid ?? _auth?.currentUser?.uid;
+    if (u != null && u.isNotEmpty) {
+      return 'user_${u}_iot_connected_devices_v4';
+    }
+    return 'guest_iot_connected_devices_v4';
+  }
+
+  /// Wipes active IoT hardware devices and logs from memory on user logout
+  void clearOnLogout() {
+    _connectedIotDevices.clear();
+    _activityLogs.clear();
+    isRealHardwareConnected = false;
+    _notifyDevicesChanged();
+    activityLogsNotifier.value = [];
   }
 
   void _loadPersistedDeviceConfig() async {
@@ -566,10 +559,11 @@ class IotHybridConnectivityService {
       if (savedStation != null && savedStation.isNotEmpty) {
         savedStationIp = savedStation;
       }
-      final jsonStr = await WebHardwareBridge.loadStorageAsync('iot_connected_devices_v4') ?? WebHardwareBridge.loadStorage('iot_connected_devices_v4');
+      final key = _devicesStorageKey();
+      final jsonStr = await WebHardwareBridge.loadStorageAsync(key) ?? WebHardwareBridge.loadStorage(key);
+      _connectedIotDevices.clear();
       if (jsonStr != null && jsonStr.isNotEmpty) {
         final List rawList = jsonDecode(jsonStr) as List;
-        _connectedIotDevices.clear();
         for (final item in rawList) {
           if (item is Map<String, dynamic>) {
             final dev = IotDevice.fromMap(item);
@@ -581,32 +575,9 @@ class IotHybridConnectivityService {
           }
         }
       }
-
-      if (_connectedIotDevices.isEmpty && isDeviceRegistered) {
-        _connectedIotDevices.add(
-          IotDevice(
-            id: registeredDeviceId,
-            name: registeredDeviceName,
-            isWifiConnected: true,
-            wifiSsid: registeredHomeSsid,
-          ),
-        );
-      }
       _notifyDevicesChanged();
 
-      final logsStr = await WebHardwareBridge.loadStorageAsync('iot_activity_logs_v1') ?? WebHardwareBridge.loadStorage('iot_activity_logs_v1');
-      if (logsStr != null && logsStr.isNotEmpty) {
-        final List raw = jsonDecode(logsStr) as List;
-        _activityLogs.clear();
-        for (final item in raw) {
-          if (item is Map<String, dynamic>) {
-            _activityLogs.add(IotActivityLog.fromMap(item));
-          }
-        }
-      }
-      if (_activityLogs.isEmpty) {
-        _seedInitialActivityLogs();
-      }
+      _activityLogs.clear();
       activityLogsNotifier.value = List.unmodifiable(_activityLogs);
     } catch (e) {
       debugPrint('Persistence load note: $e');
@@ -852,8 +823,9 @@ class IotHybridConnectivityService {
 
   void _persistConnectedDevicesLocally() {
     try {
+      final key = _devicesStorageKey();
       final listMap = _connectedIotDevices.map((d) => d.toMap()).toList();
-      WebHardwareBridge.saveStorage('iot_connected_devices_v4', jsonEncode(listMap));
+      WebHardwareBridge.saveStorage(key, jsonEncode(listMap));
       WebHardwareBridge.saveStorage('iot_target_ip', targetDeviceIp);
     } catch (_) {}
     _notifyDevicesChanged();
@@ -917,6 +889,13 @@ class IotHybridConnectivityService {
       _persistConnectedDevicesLocally();
       addDebugLog('🔗 Connected IoT Device: ${device.name} (${device.id})');
 
+      // Link in Cloud Firestore for current user account
+      try {
+        await IotFirestoreService().linkUserToDevice(device.id);
+      } catch (err) {
+        debugPrint('Firestore link error on connect: $err');
+      }
+
       return OperationFeedback.success(
         'IoT Device Added',
         'Successfully configured "${device.name}" for global alerts & monitoring.',
@@ -967,6 +946,14 @@ class IotHybridConnectivityService {
       _connectedIotDevices.removeWhere((d) => d.id == deviceId);
       _persistConnectedDevicesLocally();
       addDebugLog('🗑️ Unlinked device: $deviceId');
+
+      // Unlink from Cloud Firestore for current user account
+      try {
+        await IotFirestoreService().unlinkUserFromDevice(deviceId);
+      } catch (err) {
+        debugPrint('Firestore unlink error on remove: $err');
+      }
+
       return OperationFeedback.success(
         'Device Disconnected',
         'IoT device was unlinked from monitoring list.',

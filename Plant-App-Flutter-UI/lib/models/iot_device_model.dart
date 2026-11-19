@@ -4,6 +4,7 @@ class IotDevice {
   final String id;
   String name;
   String? userId;
+  List<String> linkedUserIds;
   bool isBluetoothConnected; // Deprecated: Kept for serialization compatibility
   bool isWifiConnected;
   String? wifiSsid;
@@ -50,6 +51,7 @@ class IotDevice {
     required this.id,
     required this.name,
     this.userId,
+    List<String>? linkedUserIds,
     this.isBluetoothConnected = false,
     this.isWifiConnected = true,
     this.wifiSsid,
@@ -81,7 +83,10 @@ class IotDevice {
     this.systemState,
     this.stateReason,
     this.reconnectAttempts = 0,
-  }) : lastSeen = lastSeen ?? DateTime.now();
+  }) : lastSeen = lastSeen ?? DateTime.now(),
+       linkedUserIds = linkedUserIds != null
+           ? List<String>.from(linkedUserIds)
+           : (userId != null && userId.isNotEmpty ? [userId] : []);
 
   /// Computed dynamic Online / Offline status based on 2-minute heartbeat window
   bool get isOnline {
@@ -189,6 +194,7 @@ class IotDevice {
       'id': id,
       'name': name,
       'userId': userId,
+      'linkedUserIds': linkedUserIds,
       'isBluetoothConnected': isBluetoothConnected,
       'isWifiConnected': isWifiConnected,
       'wifiSsid': wifiSsid,
@@ -279,10 +285,26 @@ class IotDevice {
         (map['highMoistureThreshold'] as num?)?.toInt() ??
         60;
 
+    // Robust parsing for linked user accounts
+    final rawLinked = map['linkedUserIds'];
+    final List<String> parsedLinkedUsers = [];
+    if (rawLinked is List) {
+      for (final u in rawLinked) {
+        if (u != null && u.toString().trim().isNotEmpty) {
+          parsedLinkedUsers.add(u.toString().trim());
+        }
+      }
+    }
+    final ownerUid = map['userId'] as String? ?? map['registeredBy'] as String?;
+    if (ownerUid != null && ownerUid.trim().isNotEmpty && !parsedLinkedUsers.contains(ownerUid.trim())) {
+      parsedLinkedUsers.add(ownerUid.trim());
+    }
+
     return IotDevice(
       id: map['id'] as String? ?? (map['device'] as String? ?? 'ESP32-NODE-01'),
       name: map['name'] as String? ?? 'Smart Plant Probe',
-      userId: map['userId'] as String? ?? map['registeredBy'] as String?,
+      userId: ownerUid,
+      linkedUserIds: parsedLinkedUsers,
       isBluetoothConnected: map['isBluetoothConnected'] as bool? ?? false,
       isWifiConnected: map['isWifiConnected'] as bool? ?? true,
       wifiSsid: map['wifiSsid'] as String? ?? map['ssid'] as String? ?? map['homeSsid'] as String?,

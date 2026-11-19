@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'platform/web_hardware_bridge.dart';
 
@@ -67,16 +68,30 @@ class CareLogService extends ChangeNotifier {
   static final CareLogService _instance = CareLogService._internal();
   factory CareLogService() => _instance;
 
-  static const String _storageKey = 'garden_watering_logs_json';
   final List<WateringLog> _wateringLogs = [];
   bool _isLoaded = false;
+  String? _currentUserId;
 
   CareLogService._internal() {
-    _loadFromStorage();
+    _initAuthListener();
   }
 
-  Future<void> init() async {
-    _loadFromStorage();
+  void _initAuthListener() {
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user == null) {
+        clearOnLogout();
+      } else if (user.uid != _currentUserId) {
+        _currentUserId = user.uid;
+        loadForUser(user.uid);
+      }
+    });
+  }
+
+  String _storageKeyFor(String? uid) {
+    if (uid != null && uid.isNotEmpty) {
+      return 'user_${uid}_garden_watering_logs_json';
+    }
+    return 'guest_garden_watering_logs_json';
   }
 
   List<WateringLog> get wateringLogs {
@@ -84,9 +99,48 @@ class CareLogService extends ChangeNotifier {
     return List.unmodifiable(_wateringLogs);
   }
 
+  void clearOnLogout() {
+    _currentUserId = null;
+    _wateringLogs.clear();
+    _isLoaded = false;
+    notifyListeners();
+  }
+
+  Future<void> loadForUser(String uid) async {
+    _currentUserId = uid;
+    _wateringLogs.clear();
+    final key = _storageKeyFor(uid);
+    final savedJson = await WebHardwareBridge.loadStorageAsync(key) ?? WebHardwareBridge.loadStorage(key);
+    if (savedJson != null && savedJson.trim().isNotEmpty) {
+      try {
+        final List<dynamic> decoded = jsonDecode(savedJson);
+        for (final item in decoded) {
+          if (item is Map<String, dynamic>) {
+            _wateringLogs.add(WateringLog.fromJson(item));
+          }
+        }
+      } catch (e) {
+        debugPrint('CareLogService loadForUser parse error: $e');
+      }
+    }
+    _isLoaded = true;
+    notifyListeners();
+  }
+
+  Future<void> init() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await loadForUser(user.uid);
+    } else {
+      _loadFromStorage();
+    }
+  }
+
   void _loadFromStorage() {
     _isLoaded = true;
-    final savedJson = WebHardwareBridge.loadStorage(_storageKey);
+    final user = FirebaseAuth.instance.currentUser;
+    final key = _storageKeyFor(user?.uid ?? _currentUserId);
+    final savedJson = WebHardwareBridge.loadStorage(key);
     if (savedJson != null && savedJson.trim().isNotEmpty) {
       try {
         final List<dynamic> decoded = jsonDecode(savedJson);
@@ -96,80 +150,20 @@ class CareLogService extends ChangeNotifier {
             _wateringLogs.add(WateringLog.fromJson(item));
           }
         }
-        if (_wateringLogs.isNotEmpty) return;
       } catch (e) {
         debugPrint('CareLogService load error: $e');
       }
+    } else {
+      _wateringLogs.clear();
     }
-
-    // Seed realistic starter logs matching existing starter plants
-    _seedInitialLogs();
-  }
-
-  void _seedInitialLogs() {
-    final now = DateTime.now();
-    _wateringLogs.clear();
-    _wateringLogs.addAll([
-      WateringLog(
-        id: 'seed_01',
-        plantId: '1',
-        plantName: 'Samantha',
-        species: 'Monstera Deliciosa',
-        imageUrl: 'assets/images/image_1.png',
-        timestamp: now.subtract(const Duration(hours: 3)),
-        amountMl: 250,
-        mode: 'Hardware Pump Pulse',
-        moistureBefore: 30,
-        moistureAfter: 65,
-        notes: 'IoT automatic hydration routine',
-      ),
-      WateringLog(
-        id: 'seed_02',
-        plantId: '2',
-        plantName: 'Angelica',
-        species: 'Ficus Lyrata (Fiddle Leaf)',
-        imageUrl: 'assets/images/image_2.png',
-        timestamp: now.subtract(const Duration(days: 1, hours: 2)),
-        amountMl: 350,
-        mode: 'Manual Hydration',
-        moistureBefore: 22,
-        moistureAfter: 55,
-        notes: 'Deep pot soaking',
-      ),
-      WateringLog(
-        id: 'seed_03',
-        plantId: '3',
-        plantName: 'Bob',
-        species: 'Sansevieria Trifasciata',
-        imageUrl: 'assets/images/image_3.png',
-        timestamp: now.subtract(const Duration(days: 3, hours: 5)),
-        amountMl: 150,
-        mode: 'Manual Hydration',
-        moistureBefore: 18,
-        moistureAfter: 48,
-        notes: 'Light soil spritz',
-      ),
-      WateringLog(
-        id: 'seed_04',
-        plantId: '1',
-        plantName: 'Samantha',
-        species: 'Monstera Deliciosa',
-        imageUrl: 'assets/images/image_1.png',
-        timestamp: now.subtract(const Duration(days: 5, hours: 4)),
-        amountMl: 250,
-        mode: 'Hardware Pump Pulse',
-        moistureBefore: 28,
-        moistureAfter: 62,
-        notes: 'Hardware pulse actuated',
-      ),
-    ]);
-    _saveToStorage();
   }
 
   void _saveToStorage() {
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      final key = _storageKeyFor(user?.uid ?? _currentUserId);
       final jsonStr = jsonEncode(_wateringLogs.map((l) => l.toJson()).toList());
-      WebHardwareBridge.saveStorage(_storageKey, jsonStr);
+      WebHardwareBridge.saveStorage(key, jsonStr);
     } catch (_) {}
   }
 

@@ -3,6 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:urbangreen/models/user_model.dart';
 import 'package:urbangreen/services/platform/web_hardware_bridge.dart';
+import 'package:urbangreen/services/plant_service.dart';
+import 'package:urbangreen/services/care_log_service.dart';
+import 'package:urbangreen/services/iot_hybrid_connectivity_service.dart';
 
 class AuthService {
   final FirebaseAuth? _customAuth;
@@ -221,8 +224,11 @@ class AuthService {
     await user.updatePassword(newPassword);
   }
 
-  /// Logout current user
+  /// Logout current user and clear in-memory user-bounded states
   Future<void> logout() async {
+    PlantService().clearOnLogout();
+    CareLogService().clearOnLogout();
+    IotHybridConnectivityService().clearOnLogout();
     await _auth?.signOut();
   }
 

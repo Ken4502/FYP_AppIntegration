@@ -341,6 +341,7 @@ class IotProvisioningService {
       'id': deviceId,
       'userId': user.uid,
       'registeredBy': user.uid,
+      'linkedUserIds': FieldValue.arrayUnion([user.uid]),
       'ssid': ssid,
       'isWifiConnected': true,
       'lastSeen': FieldValue.serverTimestamp(),

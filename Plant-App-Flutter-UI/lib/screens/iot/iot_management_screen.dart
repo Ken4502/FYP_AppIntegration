@@ -13,6 +13,7 @@ import 'iot_details_screen.dart';
 import 'iot_setup_wizard_screen.dart';
 import '../../components/iot_connection_guide_sheet.dart';
 import '../../components/city_picker_sheet.dart';
+import '../../services/platform/web_hardware_bridge.dart';
 
 /// Central IoT Management Screen
 /// Strictly separates SoftAP Wi-Fi provisioning from operational IoT dashboard.
@@ -371,6 +372,484 @@ class _IotManagementScreenState extends State<IotManagementScreen>
     }
   }
 
+  /// Unlinks this specific account from the probe without resetting the hardware
+  Future<void> _unlinkDevice(IotDevice device) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Unlink ${device.name}?'),
+        content: Text(
+          'Do you want to unlink this device from your account (${_firestoreService.currentUserId ?? "current account"})?\n\n'
+          '• The probe will disappear from your account view.\n'
+          '• The ESP32 probe remains connected to Wi-Fi and operational for other users sharing it.\n'
+          '• You can relink to this device at any time from this Wi-Fi network.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: kPrimaryColor, foregroundColor: Colors.white),
+            child: const Text('Unlink from Account'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      await _firestoreService.unlinkUserFromDevice(device.id);
+      await IotHybridConnectivityService().removeIotDevice(device.id);
+      _plantService.unassignDevice(device.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unlinked ${device.name} from your account.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        setState(() {});
+      }
+    }
+  }
+
+  /// Interactive Wi-Fi probe discovery and multi-user linking modal sheet
+  Future<void> _showWifiDiscoverySheet() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final currentSsid = await WebHardwareBridge.getWifiSsid();
+    final ssidController = TextEditingController(text: currentSsid ?? '');
+
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? kDarkSurfaceColor : kSurfaceColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        bool isSearching = false;
+        List<IotDevice>? foundDevices;
+        final Set<String> linkingIds = {};
+
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            void triggerScan([String? manualSsid]) async {
+              setSheetState(() {
+                isSearching = true;
+              });
+              final searchSsid = manualSsid ?? ssidController.text.trim();
+              final results = await _firestoreService.discoverOnlineDevicesOnWifi(
+                wifiSsid: searchSsid.isNotEmpty ? searchSsid : null,
+              );
+              setSheetState(() {
+                foundDevices = results;
+                isSearching = false;
+              });
+            }
+
+            if (foundDevices == null && !isSearching) {
+              triggerScan();
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+                top: 20,
+                left: 20,
+                right: 20,
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(ctx).size.height * 0.82,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white24 : Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: kPrimaryColor.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.wifi_find_rounded, color: kPrimaryColor, size: 24),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Wi-Fi Probe Discovery',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? kDarkTextPrimary : kTextPrimary,
+                                ),
+                              ),
+                              Text(
+                                'Discover & link ESP32 probes on your network',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark ? kDarkTextSecondary : kTextSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () => Navigator.pop(sheetContext),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isDark ? kDarkBackgroundColor : kBackgroundColor,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.wifi_rounded, color: kPrimaryColor, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: ssidController,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? kDarkTextPrimary : kTextPrimary,
+                              ),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                border: InputBorder.none,
+                                hintText: 'Enter Wi-Fi SSID to filter...',
+                                hintStyle: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark ? kDarkTextSecondary : kTextSecondary,
+                                ),
+                              ),
+                              onSubmitted: (val) => triggerScan(val),
+                            ),
+                          ),
+                          IconButton(
+                            icon: isSearching
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.search_rounded, color: kPrimaryColor, size: 20),
+                            onPressed: isSearching ? null : () => triggerScan(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: kPrimaryColor.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: kPrimaryColor.withValues(alpha: 0.2)),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.info_outline_rounded, color: kPrimaryColor, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Multiple accounts can retrieve live data and control the same ESP32 probe once linked on the same Wi-Fi.',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: isDark ? kDarkTextSecondary : kTextSecondary,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Flexible(
+                      child: isSearching
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(32.0),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircularProgressIndicator(),
+                                    SizedBox(height: 14),
+                                    Text('Scanning network for online ESP32 probes...'),
+                                  ],
+                                ),
+                              ),
+                            )
+                          : (foundDevices == null || foundDevices!.isEmpty
+                              ? Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.sensors_off_rounded,
+                                          size: 44,
+                                          color: isDark ? Colors.white24 : Colors.grey.shade400,
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          'No Probes Detected on this Wi-Fi',
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold,
+                                            color: isDark ? kDarkTextPrimary : kTextPrimary,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'Ensure your ESP32 is powered on and connected to the same Wi-Fi router, or pair it via Hotspot Setup.',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: isDark ? kDarkTextSecondary : kTextSecondary,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 14),
+                                        ElevatedButton.icon(
+                                          onPressed: () {
+                                            Navigator.pop(sheetContext);
+                                            _openSetupWizard();
+                                          },
+                                          icon: const Icon(Icons.add_rounded, size: 18),
+                                          label: const Text('Setup New Probe (Hotspot)'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: kPrimaryColor,
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              : ListView.separated(
+                                  shrinkWrap: true,
+                                  itemCount: foundDevices!.length,
+                                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                                  itemBuilder: (c, idx) {
+                                    final dev = foundDevices![idx];
+                                    final currentUid = _firestoreService.currentUserId;
+                                    final bool isAlreadyLinked = currentUid != null &&
+                                        dev.linkedUserIds.contains(currentUid);
+                                    final bool isLinking = linkingIds.contains(dev.id);
+
+                                    return Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: isDark ? kDarkCardColor : Colors.white,
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: isAlreadyLinked
+                                              ? kStatusSuccess.withValues(alpha: 0.4)
+                                              : (isDark ? kDarkBorderSubtle : kBorderSubtle),
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Stack(
+                                            children: [
+                                              Container(
+                                                width: 42,
+                                                height: 42,
+                                                decoration: BoxDecoration(
+                                                  color: kPrimaryColor.withValues(alpha: 0.12),
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: const Icon(
+                                                  Icons.developer_board_rounded,
+                                                  color: kPrimaryColor,
+                                                  size: 22,
+                                                ),
+                                              ),
+                                              Positioned(
+                                                right: 0,
+                                                bottom: 0,
+                                                child: Container(
+                                                  width: 10,
+                                                  height: 10,
+                                                  decoration: BoxDecoration(
+                                                    shape: BoxShape.circle,
+                                                    color: dev.isOnline ? kStatusSuccess : const Color(0xFFD97706),
+                                                    border: Border.all(color: Colors.white, width: 2),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  dev.name,
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 13,
+                                                    color: isDark ? kDarkTextPrimary : kTextPrimary,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  'ID: ${dev.id} • Wi-Fi: "${dev.wifiSsid ?? "LAN"}"',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: isDark ? kDarkTextSecondary : kTextSecondary,
+                                                  ),
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  'Moisture: ${(dev.moistureLevel ?? 0).round()}% • ${dev.isOnline ? "Online" : "Last seen ${_formatDateTime(dev.lastSeen)}"}',
+                                                  style: TextStyle(
+                                                    fontSize: 10.5,
+                                                    color: isDark ? kDarkTextSecondary : kTextSecondary,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          if (isAlreadyLinked)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                              decoration: BoxDecoration(
+                                                color: kStatusSuccess.withValues(alpha: 0.12),
+                                                borderRadius: BorderRadius.circular(10),
+                                              ),
+                                              child: const Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(Icons.check_circle_rounded, color: kStatusSuccess, size: 14),
+                                                  SizedBox(width: 4),
+                                                  Text(
+                                                    'Linked',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: kStatusSuccess,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            )
+                                          else
+                                            ElevatedButton(
+                                              onPressed: isLinking
+                                                  ? null
+                                                  : () async {
+                                                      final messenger = ScaffoldMessenger.of(context);
+                                                      final nav = Navigator.of(sheetContext);
+                                                      setSheetState(() {
+                                                        linkingIds.add(dev.id);
+                                                      });
+                                                      try {
+                                                        await _firestoreService.linkUserToDevice(dev.id);
+                                                        await IotHybridConnectivityService().connectIotDevice(dev);
+                                                        if (mounted) {
+                                                          messenger.showSnackBar(
+                                                            SnackBar(
+                                                              content: Text('🎉 Successfully linked ${dev.name} to your account! Live telemetry unlocked.'),
+                                                              backgroundColor: kPrimaryColor,
+                                                              behavior: SnackBarBehavior.floating,
+                                                            ),
+                                                          );
+                                                        }
+                                                        nav.pop();
+                                                        _handleRefresh();
+                                                      } catch (e) {
+                                                        if (mounted) {
+                                                          messenger.showSnackBar(
+                                                            SnackBar(
+                                                              content: Text('Failed to link: $e'),
+                                                              backgroundColor: kStatusDanger,
+                                                              behavior: SnackBarBehavior.floating,
+                                                            ),
+                                                          );
+                                                        }
+                                                        setSheetState(() {
+                                                          linkingIds.remove(dev.id);
+                                                        });
+                                                      }
+                                                    },
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: kPrimaryColor,
+                                                foregroundColor: Colors.white,
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius: BorderRadius.circular(10),
+                                                ),
+                                                elevation: 0,
+                                              ),
+                                              child: isLinking
+                                                  ? const SizedBox(
+                                                      width: 14,
+                                                      height: 14,
+                                                      child: CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                        color: Colors.white,
+                                                      ),
+                                                    )
+                                                  : const Text(
+                                                      'Link Device',
+                                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                                    ),
+                                            ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                )),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   String _formatDateTime(DateTime? dt) {
     if (dt == null) return 'Never';
     final now = DateTime.now();
@@ -679,14 +1158,14 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                 ),
                 const SizedBox(height: 20),
 
-                // Main CTA Button
+                // Main Dual Action Buttons: Hotspot Provisioning vs Local Wi-Fi Multi-Account Linking
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () => _openSetupWizard(),
-                    icon: const Icon(Icons.add_circle_outline_rounded, size: 20),
+                    icon: const Icon(Icons.wifi_tethering_rounded, size: 20),
                     label: const Text(
-                      'Add IoT Device',
+                      'Setup New ESP32 Probe',
                       style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                     ),
                     style: ElevatedButton.styleFrom(
@@ -698,16 +1177,31 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showWifiDiscoverySheet(),
+                    icon: const Icon(Icons.wifi_find_rounded, size: 20),
+                    label: const Text(
+                      'Find & Link Probe on This Wi-Fi',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: kPrimaryColor,
+                      side: const BorderSide(color: kPrimaryColor, width: 1.4),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextButton.icon(
                   onPressed: _handleRefresh,
                   icon: const Icon(Icons.refresh_rounded, size: 16),
-                  label: const Text('Already Configured? Tap to Refresh'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: kPrimaryColor,
-                    side: const BorderSide(color: kPrimaryColor, width: 1.2),
-                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  label: const Text('Already Linked? Tap to Refresh'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: isDark ? kDarkTextSecondary : kTextSecondary,
                   ),
                 ),
               ],
@@ -890,13 +1384,23 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                     color: isDark ? kDarkTextPrimary : kTextPrimary,
                   ),
                 ),
-                TextButton.icon(
-                  onPressed: () => _openSetupWizard(),
-                  icon: const Icon(Icons.add_rounded, size: 16, color: kPrimaryColor),
-                  label: const Text(
-                    'Configure Another',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryColor),
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Discover probes on this Wi-Fi',
+                      icon: const Icon(Icons.wifi_find_rounded, size: 20, color: kPrimaryColor),
+                      onPressed: () => _showWifiDiscoverySheet(),
+                    ),
+                    TextButton.icon(
+                      onPressed: () => _openSetupWizard(),
+                      icon: const Icon(Icons.add_rounded, size: 16, color: kPrimaryColor),
+                      label: const Text(
+                        'New Probe',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryColor),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1241,6 +1745,8 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                           _openDeviceDetails(device);
                         } else if (val == 'reconfigure') {
                           _openSetupWizard(device.id);
+                        } else if (val == 'unlink') {
+                          _unlinkDevice(device);
                         } else if (val == 'unpair') {
                           _unpairDevice(device);
                         }
@@ -1267,12 +1773,22 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                           ),
                         ),
                         const PopupMenuItem(
+                          value: 'unlink',
+                          child: Row(
+                            children: [
+                              Icon(Icons.link_off_rounded, size: 16, color: Color(0xFFD97706)),
+                              SizedBox(width: 8),
+                              Text('Unlink from Account', style: TextStyle(fontSize: 13, color: Color(0xFFD97706))),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
                           value: 'unpair',
                           child: Row(
                             children: [
                               Icon(Icons.delete_outline_rounded, size: 16, color: kStatusDanger),
                               SizedBox(width: 8),
-                              Text('Unpair Device', style: TextStyle(fontSize: 13, color: kStatusDanger)),
+                              Text('Factory Reset & Wipe', style: TextStyle(fontSize: 13, color: kStatusDanger)),
                             ],
                           ),
                         ),

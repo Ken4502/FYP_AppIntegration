@@ -12,9 +12,28 @@ class PlantService extends ChangeNotifier {
 
   final List<Plant> _plants = [];
   bool _isLoaded = false;
+  String? _currentUserId;
 
   PlantService._internal() {
-    _loadFromStorage();
+    _initAuthListener();
+  }
+
+  void _initAuthListener() {
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user == null) {
+        clearOnLogout();
+      } else if (user.uid != _currentUserId) {
+        _currentUserId = user.uid;
+        loadForUser(user.uid);
+      }
+    });
+  }
+
+  String _storageKeyFor(String? uid) {
+    if (uid != null && uid.isNotEmpty) {
+      return 'user_${uid}_garden_plants_json';
+    }
+    return 'guest_garden_plants_json';
   }
 
   List<Plant> get myPlants {
@@ -24,9 +43,22 @@ class PlantService extends ChangeNotifier {
     return List.unmodifiable(_plants);
   }
 
-  /// Asynchronous initialization called before runApp() in main.dart
-  Future<void> init() async {
-    final savedJson = await WebHardwareBridge.loadStorageAsync('user_garden_plants_json');
+  /// Wipes in-memory plants and state when user logs out
+  void clearOnLogout() {
+    _currentUserId = null;
+    _plants.clear();
+    _isLoaded = false;
+    notifyListeners();
+  }
+
+  /// Load plants for a specific authenticated user from local storage and Firestore
+  Future<void> loadForUser(String uid) async {
+    _currentUserId = uid;
+    _plants.clear();
+
+    // 1. Try user-scoped local storage first for instant UI response
+    final key = _storageKeyFor(uid);
+    final savedJson = await WebHardwareBridge.loadStorageAsync(key) ?? WebHardwareBridge.loadStorage(key);
     if (savedJson != null && savedJson.trim().isNotEmpty) {
       try {
         final List<dynamic> decoded = jsonDecode(savedJson);
@@ -40,21 +72,31 @@ class PlantService extends ChangeNotifier {
         _plants.addAll(loaded);
         _isLoaded = true;
         notifyListeners();
-        _syncFromFirestoreIfAvailable();
-        return;
       } catch (e) {
-        debugPrint('PlantService init JSON parse error: $e');
+        debugPrint('PlantService loadForUser storage parse error: $e');
       }
     }
 
-    if (!_isLoaded || _plants.isEmpty) {
+    // 2. Fetch ground-truth plants from Firestore
+    await _syncFromFirestoreIfAvailable();
+    _isLoaded = true;
+    notifyListeners();
+  }
+
+  /// Asynchronous initialization called before runApp() in main.dart
+  Future<void> init() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await loadForUser(user.uid);
+    } else {
       _loadFromStorage();
     }
-    _syncFromFirestoreIfAvailable();
   }
 
   void _loadFromStorage() {
-    final savedJson = WebHardwareBridge.loadStorage('user_garden_plants_json');
+    final user = FirebaseAuth.instance.currentUser;
+    final key = _storageKeyFor(user?.uid);
+    final savedJson = WebHardwareBridge.loadStorage(key);
     if (savedJson != null && savedJson.trim().isNotEmpty) {
       try {
         final List<dynamic> decoded = jsonDecode(savedJson);
@@ -71,42 +113,17 @@ class PlantService extends ChangeNotifier {
       } catch (_) {}
     }
 
-    // Default starter plants ONLY if storage has never been initialized
-    if (!_isLoaded && _plants.isEmpty) {
-      _plants.clear();
-      _plants.addAll([
-        Plant(
-          id: "1",
-          name: "Samantha",
-          species: "Monstera Deliciosa",
-          imageUrl: "assets/images/image_1.png",
-          description: "Thriving in the living room corner with bright indirect light. Watered every 7 days.",
-          iotDeviceId: "SmartPlant-ESP32",
-        ),
-        Plant(
-          id: "2",
-          name: "Angelica",
-          species: "Ficus Lyrata (Fiddle Leaf)",
-          imageUrl: "assets/images/image_2.png",
-          description: "Requires careful moisture balance. Sensitive to cold drafts and overwatering.",
-        ),
-        Plant(
-          id: "3",
-          name: "Bob",
-          species: "Sansevieria Trifasciata",
-          imageUrl: "assets/images/image_3.png",
-          description: "Hardy air-purifier. Very tolerant of low lighting and infrequent watering.",
-        ),
-      ]);
-      _isLoaded = true;
-      _saveToStorage();
-    }
+    // Empty account for new user: NO starter plants!
+    _plants.clear();
+    _isLoaded = true;
   }
 
   void _saveToStorage() {
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      final key = _storageKeyFor(user?.uid ?? _currentUserId);
       final jsonStr = jsonEncode(_plants.map((p) => p.toJson()).toList());
-      WebHardwareBridge.saveStorage('user_garden_plants_json', jsonStr);
+      WebHardwareBridge.saveStorage(key, jsonStr);
       _syncToFirestore();
     } catch (_) {}
   }
@@ -124,7 +141,7 @@ class PlantService extends ChangeNotifier {
     } catch (_) {}
   }
 
-  void _syncFromFirestoreIfAvailable() async {
+  Future<void> _syncFromFirestoreIfAvailable() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
@@ -133,24 +150,29 @@ class PlantService extends ChangeNotifier {
           final data = doc.data()!;
           if (data['gardenPlants'] is List) {
             final List<dynamic> cloudList = data['gardenPlants'] as List<dynamic>;
-            if (cloudList.isNotEmpty && _plants.length <= 3) {
-              final List<Plant> cloudPlants = [];
-              for (final item in cloudList) {
-                if (item is Map<String, dynamic>) {
-                  cloudPlants.add(Plant.fromJson(item));
-                }
-              }
-              if (cloudPlants.isNotEmpty && cloudPlants.length >= _plants.length) {
-                _plants.clear();
-                _plants.addAll(cloudPlants);
-                _isLoaded = true;
-                _saveToStorage();
-                notifyListeners();
+            final List<Plant> cloudPlants = [];
+            for (final item in cloudList) {
+              if (item is Map<String, dynamic>) {
+                cloudPlants.add(Plant.fromJson(item));
               }
             }
+            _plants.clear();
+            _plants.addAll(cloudPlants);
+            _isLoaded = true;
+            _saveToStorageLocallyOnly();
+            notifyListeners();
           }
         }
       }
+    } catch (_) {}
+  }
+
+  void _saveToStorageLocallyOnly() {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      final key = _storageKeyFor(user?.uid ?? _currentUserId);
+      final jsonStr = jsonEncode(_plants.map((p) => p.toJson()).toList());
+      WebHardwareBridge.saveStorage(key, jsonStr);
     } catch (_) {}
   }
 
