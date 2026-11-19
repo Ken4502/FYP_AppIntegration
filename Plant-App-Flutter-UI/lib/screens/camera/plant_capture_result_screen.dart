@@ -550,6 +550,14 @@ class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
               ),
             ),
 
+            const SizedBox(height: 14),
+
+            // 4-Category Multi-Dimension Quick Scorecard
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: kDefaultPadding),
+              child: _buildMultiCategoryQuickCard(context, diagnosis.multiCategory),
+            ),
+
             const SizedBox(height: 16),
 
             // Summary Care Card
@@ -687,6 +695,97 @@ class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
           ],
         ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildMultiCategoryQuickCard(
+    BuildContext context,
+    MultiCategoryDiagnosis multiCategory,
+  ) {
+    final theme = Theme.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? kDarkCardColor : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: multiCategory.isEntirelyClear
+              ? const Color(0xFF10B981).withValues(alpha: 0.3)
+              : Colors.amber.shade700.withValues(alpha: 0.3),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.health_and_safety_rounded, size: 18, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                "4-Category Pathology Overview",
+                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text(
+                  "Ranked by Severity",
+                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: kPrimaryColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // 4 summary chips in order of severity
+          ...multiCategory.orderedBySeverity.map((item) {
+            final color = item.severityColor;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  Icon(item.categoryIcon, size: 16, color: color),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      item.title,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: color.withValues(alpha: 0.3), width: 0.8),
+                    ),
+                    child: Text(
+                      item.isDetected ? item.statusLabel : "Optimal (Clear)",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
       ),
     );
   }

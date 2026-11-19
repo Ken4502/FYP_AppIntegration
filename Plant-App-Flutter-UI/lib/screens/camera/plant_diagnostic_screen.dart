@@ -13,7 +13,9 @@ import 'package:urbangreen/models/cart_model.dart';
 import 'package:urbangreen/models/product_model.dart';
 import 'package:urbangreen/screens/shop/cart_screen.dart';
 import 'package:urbangreen/services/achievement_service.dart';
-
+import 'package:urbangreen/services/iot_firestore_service.dart';
+import 'package:urbangreen/models/iot_device_model.dart';
+import 'package:urbangreen/screens/iot/iot_connection_setup_screen.dart';
 
 class PlantDiagnosticScreen extends StatefulWidget {
   final XFile? image;
@@ -31,12 +33,35 @@ class PlantDiagnosticScreen extends StatefulWidget {
 
 class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
   int _cardQuarterTurns = 0;
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _microorganismKey = GlobalKey();
+  final GlobalKey _pestKey = GlobalKey();
+  final GlobalKey _rustKey = GlobalKey();
+  final GlobalKey _wateringKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     if (widget.diagnosis != null) {
       AchievementService().recordDiagnosticScan();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToCategory(GlobalKey key) {
+    final context = key.currentContext;
+    if (context != null) {
+      Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 550),
+        curve: Curves.easeInOutCubic,
+        alignment: 0.05,
+      );
     }
   }
 
@@ -59,13 +84,47 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
     final abiotic = diagnosis?.abiotic;
     final coAlerts = diagnosis?.coAlerts ?? [];
 
+    final multiCategory = diagnosis?.multiCategory ??
+        MultiCategoryDiagnosis.fromSynthesized(
+          diagnosis: diagnosis?.diagnosis ??
+              DiagnosisInfo(
+                conditionName: conditionName,
+                category: category,
+                isHealthy: isHealthy,
+                confidence: confidence,
+                severity: severity,
+              ),
+          species: diagnosis?.species ??
+              SpeciesInfo(name: plantName, confidence: confidence, detectedMode: '', topCandidates: []),
+          spots: spots ?? SpotsInfo(hasSpots: false, spotsCount: 0, infectedAreaPct: 0.0, statusMessage: ''),
+          careGuide: careGuide ??
+              CareGuide(
+                plantName: plantName,
+                conditionName: conditionName,
+                isHealthy: isHealthy,
+                severity: severity,
+                category: category,
+                summary: 'Healthy plant specimen with balanced foliage and no pathogen symptoms.',
+                immediateActions: ['Maintain routine plant care.'],
+                organicTreatments: [],
+                chemicalTreatments: [],
+                prevention: ['Ensure adequate lighting and appropriate watering.'],
+                symptoms: [],
+                causes: [],
+              ),
+          pdiRating: pdi,
+          coAlerts: coAlerts,
+          predictions: diagnosis?.predictions ?? [],
+          abiotic: abiotic,
+        );
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: StandardAppBar(
         title: 'Pathology Diagnostics',
-        subtitle: 'AI disease detection & care regimen',
+        subtitle: '4-Category AI Disease & Care Regimen',
         toolbarHeight: 68,
         actions: [
           Consumer<CartModel>(
@@ -126,6 +185,7 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
         ],
       ),
       body: SingleChildScrollView(
+        controller: _scrollController,
         padding: const EdgeInsets.all(kDefaultPadding),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -206,7 +266,69 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
               ],
             ),
 
+            const SizedBox(height: 20),
+
+            // =================================================================
+            // TOP SECTION: EXECUTIVE SUMMARY OF ALL 4 CATEGORIES (SEVERITY ORDER)
+            // =================================================================
+            _buildExecutiveSummaryScorecard(context, multiCategory, isDark),
+
+            const SizedBox(height: 24),
+
+            // =================================================================
+            // BOTTOM SECTION: DETAILED BREAKDOWN FOR EACH OF THE 4 CATEGORIES
+            // ORDERED BY LOGICAL BOTANICAL SEVERITY (RANK 1 -> RANK 4)
+            // =================================================================
+            Row(
+              children: [
+                Icon(Icons.format_list_bulleted_rounded, color: theme.colorScheme.primary, size: 22),
+                const SizedBox(width: 8),
+                Text(
+                  "Comprehensive Diagnostics & Regimen",
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? kDarkTextPrimary : kTextPrimary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "In-depth analysis across all 4 pathological dimensions in order of biological threat severity.",
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? kDarkTextSecondary : kTextSecondary,
+              ),
+            ),
             const SizedBox(height: 16),
+
+            // DETAILED CARD 1: MICROORGANISM INFESTATION (RANK 1 - CRITICAL)
+            KeyedSubtree(
+              key: _microorganismKey,
+              child: _buildMicroorganismDetailCard(context, multiCategory.microorganism, spots, isDark),
+            ),
+            const SizedBox(height: 18),
+
+            // DETAILED CARD 2: PEST / INSECT INFESTATION (RANK 2 - HIGH URGENCY)
+            KeyedSubtree(
+              key: _pestKey,
+              child: _buildPestInsectDetailCard(context, multiCategory.pestInsect, isDark),
+            ),
+            const SizedBox(height: 18),
+
+            // DETAILED CARD 3: RUST FUNGAL INFECTION (RANK 3 - MODERATE SEVERITY)
+            KeyedSubtree(
+              key: _rustKey,
+              child: _buildRustDetailCard(context, multiCategory.rust, spots, isDark),
+            ),
+            const SizedBox(height: 18),
+
+            // DETAILED CARD 4: UNDER / OVERWATERING BALANCE (RANK 4 - MANAGEABLE)
+            KeyedSubtree(
+              key: _wateringKey,
+              child: _buildWateringDetailCard(context, multiCategory.watering, abiotic, plantName, isDark),
+            ),
+            const SizedBox(height: 24),
 
             // Quantitative PDI Severity Meter (if available)
             if (pdi != null) ...[
@@ -262,123 +384,6 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
               const SizedBox(height: 16),
             ],
 
-            // Secondary Co-Infection Alerts
-            if (coAlerts.isNotEmpty) ...[
-              _buildSectionTitle(context, "Co-Infection & Physiological Alerts"),
-              const SizedBox(height: 8),
-              ...coAlerts.map(
-                (alert) => Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.amber.shade700),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.warning_amber, color: Colors.amber.shade900),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              alert.badge,
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.amber.shade900,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              alert.message,
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            // Summary / Clinical Diagnosis
-            _buildSectionTitle(context, "Clinical Assessment"),
-            const SizedBox(height: 8),
-            _buildInfoCard(
-              context,
-              careGuide?.summary.isNotEmpty == true
-                  ? careGuide!.summary
-                  : "Specimen evaluated with PhytoCare Ultra neural ensemble. "
-                      "Diagnostic confidence: ${confidence.toStringAsFixed(1)}%. Category: $category.",
-            ),
-
-            const SizedBox(height: 16),
-
-            // Immediate Actions
-            if (careGuide?.immediateActions.isNotEmpty == true) ...[
-              _buildSectionTitle(context, "Immediate Actions Required"),
-              const SizedBox(height: 8),
-              ...careGuide!.immediateActions.asMap().entries.map(
-                    (entry) => _buildTreatmentStep(
-                      context,
-                      "${entry.key + 1}",
-                      "Action Step",
-                      entry.value,
-                    ),
-                  ),
-              const SizedBox(height: 16),
-            ],
-
-            // Organic Treatments
-            if (careGuide?.organicTreatments.isNotEmpty == true) ...[
-              _buildSectionTitle(context, "Organic & Bio-Control Treatments"),
-              const SizedBox(height: 8),
-              ...careGuide!.organicTreatments.asMap().entries.map(
-                    (entry) => _buildTreatmentStep(
-                      context,
-                      "${entry.key + 1}",
-                      "Organic Intervention",
-                      entry.value,
-                    ),
-                  ),
-              const SizedBox(height: 16),
-            ],
-
-            // Chemical Treatments
-            if (careGuide?.chemicalTreatments.isNotEmpty == true) ...[
-              _buildSectionTitle(context, "Chemical & Conventional Treatments"),
-              const SizedBox(height: 8),
-              ...careGuide!.chemicalTreatments.asMap().entries.map(
-                    (entry) => _buildTreatmentStep(
-                      context,
-                      "${entry.key + 1}",
-                      "Chemical Control",
-                      entry.value,
-                    ),
-                  ),
-              const SizedBox(height: 16),
-            ],
-
-            // Prevention Guidelines
-            if (careGuide?.prevention.isNotEmpty == true) ...[
-              _buildSectionTitle(context, "Long-term Prevention Guidelines"),
-              const SizedBox(height: 8),
-              ...careGuide!.prevention.asMap().entries.map(
-                    (entry) => _buildTreatmentStep(
-                      context,
-                      "${entry.key + 1}",
-                      "Preventive Care",
-                      entry.value,
-                    ),
-                  ),
-              const SizedBox(height: 16),
-            ],
-
             // AI-Prescribed Treatment & Growth Supplies Loop
             _buildRecommendedSuppliesSection(
               context,
@@ -387,20 +392,6 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
               category: category,
             ),
             const SizedBox(height: 20),
-
-            // Abiotic Stress Assessment
-            if (abiotic != null) ...[
-              _buildSectionTitle(context, "Abiotic & Environmental Stress"),
-              const SizedBox(height: 8),
-              _buildInfoCard(
-                context,
-                "• Stress Level: ${abiotic.stressLevel} (${abiotic.stressType})\n"
-                "• Chlorosis Score: ${abiotic.chlorosisScore.toStringAsFixed(1)}\n"
-                "• Necrosis Score: ${abiotic.necrosisScore.toStringAsFixed(1)}\n"
-                "• Recommendation: ${abiotic.recommendation}",
-              ),
-              const SizedBox(height: 16),
-            ],
 
             // Top AI Candidates (Differential Diagnosis)
             if (diagnosis?.predictions.isNotEmpty == true) ...[
@@ -432,6 +423,874 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
             const SizedBox(height: 24),
           ],
         ),
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // EXECUTIVE SUMMARY SCORECARD (TOP SECTION - 4 CATEGORIES)
+  // ===========================================================================
+  Widget _buildExecutiveSummaryScorecard(
+    BuildContext context,
+    MultiCategoryDiagnosis multiCategory,
+    bool isDark,
+  ) {
+    final isClear = multiCategory.isEntirelyClear;
+    final threatCount = multiCategory.activeThreatCount;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? kDarkCardColor : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isClear
+              ? const Color(0xFF10B981).withValues(alpha: 0.35)
+              : Colors.amber.shade700.withValues(alpha: 0.4),
+          width: 1.4,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Banner
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: isClear
+                  ? const Color(0xFF10B981).withValues(alpha: 0.08)
+                  : Colors.amber.withValues(alpha: 0.08),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(19)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: isClear
+                        ? const Color(0xFF10B981).withValues(alpha: 0.16)
+                        : Colors.amber.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    isClear ? Icons.verified_user_rounded : Icons.health_and_safety_rounded,
+                    color: isClear ? const Color(0xFF10B981) : Colors.amber.shade900,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Diagnostic Overview (4 Categories)",
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? kDarkTextPrimary : kTextPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        "Severity Hierarchy: Microorganism → Pests → Rust → Watering",
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: Color(0xFF059669),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isClear
+                        ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                        : Colors.redAccent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    isClear ? "ALL CLEAR" : "$threatCount ALERT",
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: isClear ? const Color(0xFF047857) : Colors.redAccent,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 4 Scorecard Tiles
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              children: [
+                _buildSummaryTile(
+                  context,
+                  item: multiCategory.microorganism,
+                  targetKey: _microorganismKey,
+                  isDark: isDark,
+                  subtitleText: "Bacterial wilts, blights, anthracnose, soft rot",
+                ),
+                const SizedBox(height: 10),
+                _buildSummaryTile(
+                  context,
+                  item: multiCategory.pestInsect,
+                  targetKey: _pestKey,
+                  isDark: isDark,
+                  subtitleText: "Spider mites, mealybugs, aphids, scale, chew holes",
+                ),
+                const SizedBox(height: 10),
+                _buildSummaryTile(
+                  context,
+                  item: multiCategory.rust,
+                  targetKey: _rustKey,
+                  isDark: isDark,
+                  subtitleText: "Pucciniales fungal uredinia spore pustules",
+                ),
+                const SizedBox(height: 10),
+                _buildSummaryTile(
+                  context,
+                  item: multiCategory.watering,
+                  targetKey: _wateringKey,
+                  isDark: isDark,
+                  subtitleText: "Soil moisture balance, cellular turgor & edema",
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryTile(
+    BuildContext context, {
+    required CategoryDiagnosisItem item,
+    required GlobalKey targetKey,
+    required bool isDark,
+    required String subtitleText,
+  }) {
+    final color = item.severityColor;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _scrollToCategory(targetKey),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: isDark ? kDarkSurfaceColor : const Color(0xFFF9FAFB),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: item.isDetected ? color.withValues(alpha: 0.35) : (isDark ? kDarkBorderSubtle : kBorderSubtle),
+              width: item.isDetected ? 1.3 : 1.0,
+            ),
+          ),
+          child: Row(
+            children: [
+              // Circular icon
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(item.categoryIcon, color: color, size: 20),
+              ),
+              const SizedBox(width: 12),
+              // Category Title and Status
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          item.title,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? kDarkTextPrimary : kTextPrimary,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            "Rank ${item.severityRank}",
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: color,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            item.statusLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: item.isDetected ? color : (isDark ? kDarkTextSecondary : kTextSecondary),
+                            ),
+                          ),
+                        ),
+                        if (item.isDetected && item.confidence > 0) ...[
+                          const SizedBox(width: 4),
+                          Text(
+                            "(${item.confidence.toStringAsFixed(0)}%)",
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.bold,
+                              color: color,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // "Details" jump pill
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: color.withValues(alpha: 0.25), width: 0.8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      "Details",
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color),
+                    ),
+                    const SizedBox(width: 2),
+                    Icon(Icons.arrow_downward_rounded, size: 12, color: color),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // DETAILED CARD 1: MICROORGANISM INFESTATION (RANK 1 - CRITICAL)
+  // ===========================================================================
+  Widget _buildMicroorganismDetailCard(
+    BuildContext context,
+    CategoryDiagnosisItem item,
+    SpotsInfo? spots,
+    bool isDark,
+  ) {
+    return _buildDetailSectionContainer(
+      context,
+      item: item,
+      isDark: isDark,
+      severityRationale:
+          "Rank 1 Threat Rationale: Microorganisms (bacterial wilts like Xanthomonas & Ralstonia, fungal leaf blights like Anthracnose & Botrytis, and viral pathogens) destroy vascular xylem/phloem vessels. Spreading rapidly via aerosolized micro-droplets, they cause irreversible necrosis and whole-plant collapse within 24–48 hours if not immediately isolated.",
+      customChild: spots != null && spots.hasSpots
+          ? Container(
+              margin: const EdgeInsets.only(top: 10),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.lens_blur_rounded, color: Colors.redAccent, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "Computer Vision Localization: ${spots.spotsCount} active lesion zone(s) detected covering ${spots.infectedAreaPct.toStringAsFixed(1)}% of foliar tissue.",
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.redAccent),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : null,
+    );
+  }
+
+  // ===========================================================================
+  // DETAILED CARD 2: PEST / INSECT INFESTATION (RANK 2 - HIGH URGENCY)
+  // ===========================================================================
+  Widget _buildPestInsectDetailCard(
+    BuildContext context,
+    CategoryDiagnosisItem item,
+    bool isDark,
+  ) {
+    return _buildDetailSectionContainer(
+      context,
+      item: item,
+      isDark: isDark,
+      severityRationale:
+          "Rank 2 Threat Rationale: Biotic insect and mite pests (spider mites, aphids, thrips, scale, mealybugs, chewing caterpillars) are mobile biological parasites. They pierce leaf epidermis, drain vital phloem sap, stunt growth, excrete honeydew that fosters black sooty mold, and act as vectors transmitting incurable viral pathogens to adjacent plants.",
+    );
+  }
+
+  // ===========================================================================
+  // DETAILED CARD 3: RUST FUNGAL INFECTION (RANK 3 - MODERATE SEVERITY)
+  // ===========================================================================
+  Widget _buildRustDetailCard(
+    BuildContext context,
+    CategoryDiagnosisItem item,
+    SpotsInfo? spots,
+    bool isDark,
+  ) {
+    return _buildDetailSectionContainer(
+      context,
+      item: item,
+      isDark: isDark,
+      severityRationale:
+          "Rank 3 Threat Rationale: Rust fungi (Pucciniales) are obligate parasites specialized in foliar colonization. While contagious via windborne spores under high humidity, rust attacks leaf lamina with distinctive cinnamon/orange pustules rather than causing instant vascular collapse. Targeted leaf pruning and sulfur/copper fungicides reliably eradicate infections.",
+    );
+  }
+
+  // ===========================================================================
+  // DETAILED CARD 4: UNDER / OVERWATERING BALANCE (RANK 4 - MANAGEABLE)
+  // ===========================================================================
+  Widget _buildWateringDetailCard(
+    BuildContext context,
+    CategoryDiagnosisItem item,
+    AbioticInfo? abiotic,
+    String plantName,
+    bool isDark,
+  ) {
+    return _buildDetailSectionContainer(
+      context,
+      item: item,
+      isDark: isDark,
+      severityRationale:
+          "Rank 4 Threat Rationale: Under/overwatering is physiological (abiotic) stress rather than an infectious biological pathogen. It does not spread to adjacent plants and is readily reversible with irrigation adjustment. Monitored continuously by your UrbanGreen IoT capacitive soil sensor, moisture can be stabilized in real time.",
+      customChild: _buildIotMoistureCrossCheck(context, plantName: plantName, abiotic: abiotic, isDark: isDark),
+    );
+  }
+
+  // ===========================================================================
+  // IOT SOIL MOISTURE CROSS-CHECK INTEGRATION FOR WATERING CARD
+  // ===========================================================================
+  Widget _buildIotMoistureCrossCheck(
+    BuildContext context, {
+    required String plantName,
+    required AbioticInfo? abiotic,
+    required bool isDark,
+  }) {
+    final iotService = IotFirestoreService();
+
+    return StreamBuilder<List<IotDevice>>(
+      stream: iotService.streamUserDevices(),
+      builder: (context, snapshot) {
+        final devices = snapshot.data ?? [];
+        // Look for device linked to this plant name
+        IotDevice? linkedDevice;
+        if (devices.isNotEmpty) {
+          final cleanName = plantName.toLowerCase();
+          for (final d in devices) {
+            if (d.linkedPlantName != null && cleanName.contains(d.linkedPlantName!.toLowerCase())) {
+              linkedDevice = d;
+              break;
+            }
+          }
+          linkedDevice ??= devices.first; // Fallback to first active probe
+        }
+
+        if (linkedDevice != null) {
+          final liveMoisture = (linkedDevice.moistureLevel ?? 0.0).round();
+          final targetMin = linkedDevice.lowMoistureThreshold;
+          final targetMax = linkedDevice.highMoistureThreshold;
+          final isMoistureLow = liveMoisture < targetMin;
+          final isMoistureHigh = liveMoisture > targetMax;
+
+          Color stateColor = const Color(0xFF10B981);
+          String stateText = "Optimal moisture equilibrium";
+          if (isMoistureLow) {
+            stateColor = const Color(0xFF2563EB);
+            stateText = "Live moisture is below minimum threshold (Needs water)";
+          } else if (isMoistureHigh) {
+            stateColor = const Color(0xFF7C3AED);
+            stateText = "Live moisture exceeds target (Waterlogging risk)";
+          }
+
+          return Container(
+            margin: const EdgeInsets.only(top: 10),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: stateColor.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: stateColor.withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.sensors_rounded, color: stateColor, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        "Live IoT Probe: ${linkedDevice.name}${linkedDevice.wifiSsid != null ? ' (${linkedDevice.wifiSsid})' : ''}",
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: stateColor),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: stateColor,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        "$liveMoisture%",
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  "• Target Specimen Zone: $targetMin% - $targetMax%\n• Probe Assessment: $stateText",
+                  style: TextStyle(fontSize: 11, height: 1.4, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // No IoT probe currently connected
+        return Container(
+          margin: const EdgeInsets.only(top: 10),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0284C7).withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.25)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.sensors_rounded, color: Color(0xFF0284C7), size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Automate Hydration with UrbanGreen IoT Probe",
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0284C7)),
+                    ),
+                    const SizedBox(height: 3),
+                    const Text(
+                      "Connect a capacitive soil sensor to track live soil moisture in real time and trigger automatic smart watering watchdogs.",
+                      style: TextStyle(fontSize: 11, color: kTextSecondary, height: 1.3),
+                    ),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const IotConnectionSetupScreen(),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0284C7),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.add_link_rounded, color: Colors.white, size: 14),
+                            SizedBox(width: 4),
+                            Text(
+                              "Connect IoT Probe",
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ===========================================================================
+  // SHARED REUSABLE DETAILED SECTION CONTAINER
+  // ===========================================================================
+  Widget _buildDetailSectionContainer(
+    BuildContext context, {
+    required CategoryDiagnosisItem item,
+    required bool isDark,
+    required String severityRationale,
+    Widget? customChild,
+  }) {
+    final color = item.severityColor;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? kDarkCardColor : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: item.isDetected ? color.withValues(alpha: 0.45) : (isDark ? kDarkBorderSubtle : kBorderSubtle),
+          width: item.isDetected ? 1.5 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Section Card Header
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.09),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(17)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.16),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(item.categoryIcon, color: color, size: 20),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? kDarkTextPrimary : kTextPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.severityRankLabel,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: color,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    item.isDetected ? item.severityLevel.toUpperCase() : "OPTIMAL",
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Botanical Severity Hierarchy Explanation Callout
+                Container(
+                  padding: const EdgeInsets.all(11),
+                  decoration: BoxDecoration(
+                    color: isDark ? kDarkSurfaceColor : const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: isDark ? kDarkBorderSubtle : Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline_rounded, size: 16, color: color),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          severityRationale,
+                          style: TextStyle(
+                            fontSize: 11,
+                            height: 1.4,
+                            color: isDark ? kDarkTextSecondary : Colors.grey.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // Diagnosis Finding Box
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "Diagnostic Verdict:",
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kTextSecondary),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            item.statusLabel,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: item.isDetected ? color : (isDark ? kDarkTextPrimary : kTextPrimary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (item.confidence > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          "Confidence: ${item.confidence.toStringAsFixed(1)}%",
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                // Summary
+                Text(
+                  item.summary,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.4,
+                    color: isDark ? kDarkTextPrimary : Colors.black87,
+                  ),
+                ),
+
+                // Custom child (e.g. OpenCV spot localization or IoT moisture stream)
+                if (customChild != null) ...[
+                  customChild,
+                ],
+
+                const SizedBox(height: 14),
+
+                // Clinical Symptoms & Indicators
+                if (item.symptoms.isNotEmpty) ...[
+                  const Text(
+                    "Key Pathological Indicators & Symptoms:",
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+                  ...item.symptoms.map(
+                    (s) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.check_circle_outline_rounded, size: 14, color: color),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              s,
+                              style: TextStyle(fontSize: 12, height: 1.3, color: isDark ? kDarkTextSecondary : Colors.black87),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
+                // Immediate Actions Required
+                if (item.immediateActions.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      Icon(Icons.flash_on_rounded, size: 15, color: color),
+                      const SizedBox(width: 4),
+                      Text(
+                        "Immediate Actions Required:",
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  ...item.immediateActions.asMap().entries.map(
+                        (entry) => _buildTreatmentStep(
+                          context,
+                          "${entry.key + 1}",
+                          "Step",
+                          entry.value,
+                        ),
+                      ),
+                  const SizedBox(height: 10),
+                ],
+
+                // Organic & Bio-Control Treatments
+                if (item.organicTreatments.isNotEmpty) ...[
+                  const Row(
+                    children: [
+                      Icon(Icons.eco_rounded, size: 15, color: Color(0xFF10B981)),
+                      SizedBox(width: 4),
+                      Text(
+                        "Organic & Bio-Control Treatments:",
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF047857)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  ...item.organicTreatments.map(
+                    (t) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.spa_outlined, size: 14, color: Color(0xFF10B981)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(t, style: TextStyle(fontSize: 12, height: 1.3, color: isDark ? kDarkTextSecondary : Colors.black87)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+
+                // Chemical Treatments
+                if (item.chemicalTreatments.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      Icon(Icons.science_outlined, size: 15, color: Colors.purple.shade700),
+                      const SizedBox(width: 4),
+                      Text(
+                        "Chemical & Conventional Controls:",
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.purple.shade700),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  ...item.chemicalTreatments.map(
+                    (t) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.medication_liquid_rounded, size: 14, color: Colors.purple.shade700),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(t, style: TextStyle(fontSize: 12, height: 1.3, color: isDark ? kDarkTextSecondary : Colors.black87)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+
+                // Prevention
+                if (item.prevention.isNotEmpty) ...[
+                  const Row(
+                    children: [
+                      Icon(Icons.shield_outlined, size: 15, color: Colors.blueAccent),
+                      SizedBox(width: 4),
+                      Text(
+                        "Long-Term Prevention & Hygiene:",
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueAccent),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  ...item.prevention.map(
+                    (p) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.arrow_right_rounded, size: 18, color: Colors.blueAccent),
+                          Expanded(
+                            child: Text(p, style: TextStyle(fontSize: 12, height: 1.3, color: isDark ? kDarkTextSecondary : Colors.black87)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

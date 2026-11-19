@@ -421,9 +421,130 @@ class PlantApiService {
       'abiotic': {
         'chlorosis_score': 18.4,
         'necrosis_score': 6.2,
-        'stress_level': 'Moderate',
-        'stress_type': 'Hydration Imbalance',
+        'stress_level': 'Low',
+        'stress_type': 'Hydration Equilibrium',
         'recommendation': 'Soil moisture is well-balanced within 35%-60% target range.',
+        'is_underwatered': false,
+        'is_overwatered': false,
+        'is_pest': false,
+        'water_status': 'Optimal',
+      },
+      'multi_category_diagnosis': {
+        'microorganism': {
+          'id': 'microorganism',
+          'title': 'Microorganism Infestation',
+          'severity_rank': 1,
+          'severity_rank_label': 'Rank 1 • Critical Severity',
+          'severity_level': 'Moderate',
+          'is_detected': true,
+          'status_label': 'Bacterial Leaf Spot (Xanthomonas)',
+          'confidence': 89.5,
+          'summary': 'Water-soaked translucent lesions with chlorotic yellow halos concentrated along lower leaf margins caused by pathogenic bacterial infection.',
+          'symptoms': [
+            'Water-soaked translucent lesions with chlorotic halos',
+            'Localized foliar necrosis along lower leaf margins',
+            'Premature leaflet yellowing and tissue softening',
+          ],
+          'immediate_actions': [
+            'Isolate specimen at least 1.5 meters away from other plants immediately.',
+            'Excise heavily infected leaflets showing yellow halos using alcohol-sterilized shears.',
+            'Water strictly at the soil base; avoid overhead spraying or misting.',
+          ],
+          'organic_treatments': [
+            'Apply copper octanoate (copper soap) fungicidal bactericide every 7-10 days.',
+            'Spray cold-pressed pure neem oil solution (0.5% concentration) to boost systemic immunity.',
+            'Root drench with Bacillus subtilis bio-fungicide.',
+          ],
+          'chemical_treatments': [
+            'Apply fixed copper hydroxide spray at 1.5g per liter of water for persistent bacterial lesions.',
+          ],
+          'prevention': [
+            'Ensure morning watering so leaf moisture dries thoroughly before evening.',
+            'Maintain minimum 30cm spacing between indoor pots for continuous laminar airflow.',
+          ],
+          'badges': ['High Contagion', 'Vascular Pathogen', 'Immediate Quarantine'],
+        },
+        'pest_insect': {
+          'id': 'pest_insect',
+          'title': 'Pest & Insect Infestation',
+          'severity_rank': 2,
+          'severity_rank_label': 'Rank 2 • High Urgency',
+          'severity_level': 'Optimal',
+          'is_detected': false,
+          'status_label': 'Clear • No Active Pests',
+          'confidence': 96.0,
+          'summary': 'No sap-sucking insects, webbing, scale armor shells, mealybug wax clusters, or chewing bite holes detected on foliage.',
+          'symptoms': [
+            'Intact leaf margins with zero evidence of feeding bites, webbing, or honeydew.',
+          ],
+          'immediate_actions': [
+            'Continue standard weekly visual checks of leaf undersides.',
+          ],
+          'organic_treatments': [
+            'Periodic gentle wipe of leaves to remove dust and discourage mites.',
+          ],
+          'chemical_treatments': [
+            'No chemical insecticides needed.',
+          ],
+          'prevention': [
+            'Maintain balanced ambient humidity to discourage spider mite reproduction.',
+          ],
+          'badges': ['Pest-Free', 'Optimal Vigor'],
+        },
+        'rust': {
+          'id': 'rust',
+          'title': 'Rust Fungal Infection',
+          'severity_rank': 3,
+          'severity_rank_label': 'Rank 3 • Moderate Severity',
+          'severity_level': 'Optimal',
+          'is_detected': false,
+          'status_label': 'Clear • No Rust Pustules',
+          'confidence': 98.2,
+          'summary': 'No orange, cinnamon, or brown Pucciniales spore pustules, uredinia clusters, or localized rust chlorosis detected.',
+          'symptoms': [
+            'Clean foliar undersides with smooth texture and uniform pigmentation.',
+          ],
+          'immediate_actions': [
+            'Keep foliar canopy dry to maintain high resistance against fungal spores.',
+          ],
+          'organic_treatments': [
+            'No fungicidal treatments required.',
+          ],
+          'chemical_treatments': [
+            'No chemical fungicides needed.',
+          ],
+          'prevention': [
+            'Avoid overhead spraying; ensure continuous gentle room airflow.',
+          ],
+          'badges': ['Pustule-Free', 'Zero Spores'],
+        },
+        'watering': {
+          'id': 'watering',
+          'title': 'Under / Overwatering Balance',
+          'severity_rank': 4,
+          'severity_rank_label': 'Rank 4 • Physiological / Manageable',
+          'severity_level': 'Optimal',
+          'is_detected': false,
+          'status_label': 'Optimal • Balanced Soil Hydration',
+          'confidence': 94.0,
+          'summary': 'Foliage demonstrates ideal cellular turgidity and water balance within target 35%-60% moisture range. No symptoms of drought wilting or waterlogged edema.',
+          'symptoms': [
+            'Firm, upright leaf blades with natural spring and vibrant luster.',
+          ],
+          'immediate_actions': [
+            'Maintain current watering cadence; monitor soil moisture before next watering.',
+          ],
+          'organic_treatments': [
+            'Routine balanced organic liquid fertilizer during active growing phase.',
+          ],
+          'chemical_treatments': [
+            'None needed.',
+          ],
+          'prevention': [
+            'Adhere to recommended species moisture threshold and monitor with IoT probe.',
+          ],
+          'badges': ['Optimal Turgor', 'Hydration Equilibrium'],
+        },
       },
     });
   }
