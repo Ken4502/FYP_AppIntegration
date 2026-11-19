@@ -74,12 +74,17 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   String? _stateReason;
   int _reconnectAttempts = 0;
 
+  // Live Streamed Device State
+  IotDevice? _liveDevice;
+  IotDevice get _effectiveDevice => _liveDevice ?? widget.device;
+
   // Central Plant Service (for strictly 1-to-1 IoT <-> Plant mapping)
   final PlantService _plantService = PlantService();
 
   @override
   void initState() {
     super.initState();
+    _liveDevice = widget.device;
     _tabController = TabController(length: 3, vsync: this);
     _plantService.addListener(_onPlantServiceChanged);
 
@@ -136,6 +141,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   }
 
   void _updateFromDevice(IotDevice device) {
+    _liveDevice = device;
     final int mPct = (device.moistureLevel != null)
         ? (device.moistureLevel! * 100).round()
         : _moisturePercent;
@@ -169,6 +175,27 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
         _moistureHistory.removeAt(0);
       }
     });
+  }
+
+  /// Pull-to-Refresh Handler: pulls fresh telemetry & status from Cloud Firestore
+  Future<void> _manualRefresh() async {
+    await _fetchTelemetry();
+    await _loadWeather();
+    if (mounted) {
+      final isNowOnline = _effectiveDevice.isOnline || _isConnected;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isNowOnline
+                ? '⚡ Status: Probe is ONLINE & syncing telemetry.'
+                : '⚡ Status: Probe is in STANDBY / OFFLINE mode.',
+          ),
+          backgroundColor: isNowOnline ? kStatusSuccess : const Color(0xFFD97706),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   String _formatDateTime(DateTime? dt) {
@@ -1048,87 +1075,96 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   // =========================================================================
   Widget _buildDeviceAndWifiPanel() {
     final isDark = context.isDarkMode;
+    final dev = _effectiveDevice;
     final stationIp = _service.savedStationIp ?? _service.targetDeviceIp;
-    final homeSsid = widget.device.wifiSsid ?? _service.registeredHomeSsid ?? 'WenNikk-2.4Ghz';
+    final homeSsid = dev.wifiSsid ?? _service.registeredHomeSsid ?? 'Configured Wi-Fi';
+    final bool isOnline = dev.isOnline || _isConnected;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(kDefaultPadding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildGraceHotspotBanner(isDark),
+    return RefreshIndicator(
+      color: kPrimaryColor,
+      onRefresh: _manualRefresh,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(kDefaultPadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildGraceHotspotBanner(isDark),
 
-          // 1. Device Summary Card
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDark ? kDarkCardColor : kSurfaceColor,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: kPrimaryColor.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
+            // 1. Device Summary Card
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? kDarkCardColor : kSurfaceColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: kPrimaryColor.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.developer_board_rounded, color: kPrimaryColor, size: 22),
                   ),
-                  child: const Icon(Icons.developer_board_rounded, color: kPrimaryColor, size: 22),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              widget.device.name,
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                                color: isDark ? kDarkTextPrimary : kTextPrimary,
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                dev.name,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: isDark ? kDarkTextPrimary : kTextPrimary,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: kStatusSuccess,
-                              borderRadius: BorderRadius.circular(10),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: isOnline ? kStatusSuccess : const Color(0xFFD97706),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                isOnline ? 'ONLINE' : 'OFFLINE',
+                                style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                              ),
                             ),
-                            child: const Text(
-                              'MAIN HOST',
-                              style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'This phone is registered as the main host and alert receiver.',
-                        style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : kTextSecondary),
-                      ),
-                    ],
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          isOnline
+                              ? 'Probe is actively connected to Cloud Firestore.'
+                              : 'Probe offline. Swipe down to refresh or check power.',
+                          style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-          // 2. Connect IoT to Network Card (Wi-Fi Configuration & Gateway)
-          _buildNetworkConnectionCard(stationIp, homeSsid),
-          const SizedBox(height: 16),
+            // 2. Connect IoT to Network Card (Wi-Fi Configuration & Gateway)
+            _buildNetworkConnectionCard(stationIp, homeSsid),
+            const SizedBox(height: 16),
 
-          // 3. Advanced Hardware Diagnostics & Technical Tools (Collapsible at bottom)
-          _buildAdvancedHardwareAccordion(stationIp, homeSsid),
-          const SizedBox(height: 24),
-        ],
+            // 3. Advanced Hardware Diagnostics & Technical Tools (Collapsible at bottom)
+            _buildAdvancedHardwareAccordion(stationIp, homeSsid),
+            const SizedBox(height: 24),
+          ],
+        ),
       ),
     );
   }
@@ -1361,10 +1397,11 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   /// Network & Cloud Connectivity Card inside Device Details
   Widget _buildNetworkConnectionCard(String stationIp, String homeSsid) {
     final isDark = context.isDarkMode;
-    final bool isOnline = widget.device.isOnline;
-    final bool hasWifi = widget.device.isWifiConnected &&
-        widget.device.wifiSsid != null &&
-        widget.device.wifiSsid!.isNotEmpty;
+    final dev = _effectiveDevice;
+    final bool isOnline = dev.isOnline || _isConnected;
+    final bool hasWifi = dev.isWifiConnected &&
+        dev.wifiSsid != null &&
+        dev.wifiSsid!.isNotEmpty;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1502,17 +1539,32 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  hasWifi
-                      ? 'Network: $homeSsid • IP: $stationIp'
-                      : 'Setup Hotspot: ESP32_Plant_Irrigation (192.168.4.1)',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isOnline
-                        ? (isDark ? const Color(0xFFA7F3D0) : const Color(0xFF15803D))
-                        : (isDark ? const Color(0xFFFDE68A) : const Color(0xFFB45309)),
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        hasWifi
+                            ? 'Network: $homeSsid • IP: $stationIp'
+                            : 'Setup Hotspot: ESP32_Plant_Irrigation (192.168.4.1)',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isOnline
+                              ? (isDark ? const Color(0xFFA7F3D0) : const Color(0xFF15803D))
+                              : (isDark ? const Color(0xFFFDE68A) : const Color(0xFFB45309)),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Last seen: ${_formatDateTime(dev.lastSeen)}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: isDark ? kDarkTextSecondary : kTextSecondary,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -2472,10 +2524,14 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     final bool isOutdoor = assignedPlant?.isOutdoor ?? false;
     final bool willRainToday = isOutdoor && (_weatherData?.isRainGuardActive ?? false);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(kDefaultPadding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    return RefreshIndicator(
+      color: kPrimaryColor,
+      onRefresh: _manualRefresh,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(kDefaultPadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildGraceHotspotBanner(isDark),
 
@@ -2829,8 +2885,9 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
           const SizedBox(height: 24),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   /// Collapsible Sensor History & Diagnostics at the bottom of Plant & Care tab
   Widget _buildSensorDiagnosticsAccordion(Color statusColor) {
@@ -2989,41 +3046,52 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
             }).toList();
 
             if (deviceLogs.isEmpty) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: kPrimaryColor.withValues(alpha: 0.08),
-                          shape: BoxShape.circle,
+              return RefreshIndicator(
+                color: kPrimaryColor,
+                onRefresh: _manualRefresh,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Container(
+                    height: MediaQuery.of(context).size.height * 0.5,
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: kPrimaryColor.withValues(alpha: 0.08),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.receipt_long_rounded, size: 44, color: kPrimaryColor),
                         ),
-                        child: const Icon(Icons.receipt_long_rounded, size: 44, color: kPrimaryColor),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'No Logs for This Device Yet',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kTextPrimary),
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        'Real-time sensing, auto-watering cycles, and push notifications for this IoT unit will appear here automatically as they occur.',
-                        style: TextStyle(fontSize: 12, color: kTextSecondary, height: 1.4),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
+                        const SizedBox(height: 16),
+                        const Text(
+                          'No Logs for This Device Yet',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kTextPrimary),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Real-time sensing, auto-watering cycles, and push notifications for this IoT unit will appear here automatically as they occur. Pull down to refresh.',
+                          style: TextStyle(fontSize: 12, color: kTextSecondary, height: 1.4),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
             }
 
-            return ListView.separated(
-              padding: const EdgeInsets.all(kDefaultPadding),
-              itemCount: deviceLogs.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
+            return RefreshIndicator(
+              color: kPrimaryColor,
+              onRefresh: _manualRefresh,
+              child: ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(kDefaultPadding),
+                itemCount: deviceLogs.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (ctx, idx) {
                 final log = deviceLogs[idx];
                 final timeStr = '${log.timestamp.hour.toString().padLeft(2, '0')}:${log.timestamp.minute.toString().padLeft(2, '0')}:${log.timestamp.second.toString().padLeft(2, '0')}';
@@ -3106,8 +3174,9 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                   ),
                 );
               },
-            );
-          },
+            ),
+          );
+        },
         );
       },
     );

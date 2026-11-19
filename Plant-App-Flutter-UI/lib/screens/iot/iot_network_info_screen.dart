@@ -37,10 +37,56 @@ class _IotNetworkInfoScreenState extends State<IotNetworkInfoScreen> {
   int _currentLatency = 0;
   bool _isTestingAlert = false;
 
+  IotDevice? _liveDevice;
+  IotDevice get _effectiveDevice => _liveDevice ?? widget.device;
+  StreamSubscription<IotDevice?>? _deviceSub;
+
   @override
   void initState() {
     super.initState();
+    _liveDevice = widget.device;
     _currentLatency = widget.latencyMs;
+
+    _deviceSub = _firestoreService.streamDevice(widget.device.id).listen((dev) {
+      if (dev != null && mounted) {
+        setState(() {
+          _liveDevice = dev;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _deviceSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _handleRefresh() async {
+    final sw = Stopwatch()..start();
+    final dev = await _firestoreService.getDevice(widget.device.id);
+    sw.stop();
+
+    if (!mounted) return;
+
+    if (dev != null) {
+      setState(() {
+        _liveDevice = dev;
+        _currentLatency = sw.elapsedMilliseconds;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            dev.isOnline
+                ? '⚡ Status: Probe is ONLINE (${_currentLatency}ms Cloud Sync)'
+                : '⚡ Status: Probe is in STANDBY / OFFLINE mode',
+          ),
+          backgroundColor: dev.isOnline ? kPrimaryColor : const Color(0xFFD97706),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   Future<void> _runPing() async {
@@ -154,9 +200,10 @@ Generated on: ${DateTime.now().toLocal()}
   @override
   Widget build(BuildContext context) {
     final isDark = context.isDarkMode;
+    final dev = _effectiveDevice;
     final stationIp = _service.savedStationIp ?? _service.targetDeviceIp;
-    final homeSsid = widget.device.wifiSsid ?? _service.registeredHomeSsid ?? 'WenNikk-2.4Ghz';
-    final isOnline = _service.isRealHardwareConnected || widget.isConnected;
+    final homeSsid = dev.wifiSsid ?? _service.registeredHomeSsid ?? 'Configured Wi-Fi';
+    final isOnline = dev.isOnline;
 
     return Scaffold(
       backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
@@ -243,11 +290,15 @@ Generated on: ${DateTime.now().toLocal()}
 
             // Scrollable Diagnostic Body
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
+              child: RefreshIndicator(
+                color: kPrimaryColor,
+                onRefresh: _handleRefresh,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                     // Overview Live Banner
                     Container(
                       padding: const EdgeInsets.all(16),
@@ -536,6 +587,7 @@ Generated on: ${DateTime.now().toLocal()}
                 ),
               ),
             ),
+          ),
           ],
         ),
       ),

@@ -1101,9 +1101,13 @@ class _IotManagementScreenState extends State<IotManagementScreen>
   /// Explains clearly that Wi-Fi configuration is a dedicated prerequisite before
   /// normal IoT features can be used.
   Widget _buildGatedSetupView(bool isDark) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 36),
-      child: Column(
+    return RefreshIndicator(
+      color: kPrimaryColor,
+      onRefresh: _handleRefresh,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 36),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Graphic Card
@@ -1295,8 +1299,9 @@ class _IotManagementScreenState extends State<IotManagementScreen>
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildProcessStep({
     required String stepNum,
