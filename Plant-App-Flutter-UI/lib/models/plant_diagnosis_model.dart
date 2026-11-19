@@ -18,6 +18,8 @@ class PlantDiagnosisResponse {
   final List<RuledOutCondition> ruledOutConditions;
   final List<DiagnosticClarifierQuestion> clarifierQuestions;
   final FoliarHoleAnalysis holeAnalysis;
+  final bool hasMacroDetail;
+  final String? macroImageBase64;
 
   PlantDiagnosisResponse({
     required this.status,
@@ -33,6 +35,8 @@ class PlantDiagnosisResponse {
     required this.predictions,
     this.abiotic,
     this.preprocessedImageBase64,
+    this.hasMacroDetail = false,
+    this.macroImageBase64,
     MultiCategoryDiagnosis? multiCategory,
     List<RuledOutCondition>? ruledOutConditions,
     List<DiagnosticClarifierQuestion>? clarifierQuestions,
@@ -161,6 +165,8 @@ class PlantDiagnosisResponse {
       holeAnalysis: holeAnalysis,
       ruledOutConditions: ruledOutConditions,
       clarifierQuestions: clarifierQuestions,
+      hasMacroDetail: json['has_macro_detail'] as bool? ?? (json['macro_image_base64'] != null),
+      macroImageBase64: json['macro_image_base64']?.toString(),
     );
   }
 

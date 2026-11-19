@@ -230,8 +230,10 @@ class PlantApiService {
   }
 
   /// Sends a captured plant photo to the CoreTech AI backend (/api/predict)
+  /// Supports optional macroImageFile for two-shot clinical diagnosis (Canopy + Macro symptom).
   Future<PlantDiagnosisResponse> diagnosePlant(
     XFile imageFile, {
+    XFile? macroImageFile,
     String plantGroup = 'auto',
   }) async {
     // Attempt auto-discovery if current URL is inactive
@@ -240,9 +242,13 @@ class PlantApiService {
     final uri = Uri.parse('$_serverUrl/api/predict');
     AppLoggerService().info(
       'PhytoCareAI',
-      'Sending plant diagnosis request to $_serverUrl (group: $plantGroup)',
+      'Sending plant diagnosis request to $_serverUrl (group: $plantGroup, macro: ${macroImageFile != null})',
       category: LogCategory.http,
-      metadata: {'url': uri.toString(), 'filename': imageFile.name},
+      metadata: {
+        'url': uri.toString(),
+        'filename': imageFile.name,
+        'has_macro': macroImageFile != null,
+      },
     );
 
     try {
@@ -256,6 +262,16 @@ class PlantApiService {
         filename: imageFile.name.isNotEmpty ? imageFile.name : 'plant_capture.jpg',
       );
       request.files.add(multipartFile);
+
+      if (macroImageFile != null) {
+        final macroBytes = await macroImageFile.readAsBytes();
+        final macroMultipart = http.MultipartFile.fromBytes(
+          'macro_file',
+          macroBytes,
+          filename: macroImageFile.name.isNotEmpty ? macroImageFile.name : 'plant_macro.jpg',
+        );
+        request.files.add(macroMultipart);
+      }
 
       final streamedResponse = await request.send().timeout(
         const Duration(seconds: 40),
@@ -314,10 +330,14 @@ class PlantApiService {
 
   /// Provides an intelligent offline simulation response with high-fidelity clinical pathology
   /// data, allowing complete UI/UX testing and demonstration even when offline.
-  static PlantDiagnosisResponse generateOfflineDemoDiagnosis(XFile imageFile) {
+  static PlantDiagnosisResponse generateOfflineDemoDiagnosis(
+    XFile imageFile, {
+    XFile? macroImage,
+  }) {
     return PlantDiagnosisResponse.fromJson({
       'status': 'success',
       'is_plant': true,
+      'has_macro_detail': macroImage != null,
       'inference_time_ms': 142.5,
       'disease_available': true,
       'species': {

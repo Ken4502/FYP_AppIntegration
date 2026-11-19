@@ -19,11 +19,13 @@ import 'package:urbangreen/screens/iot/iot_connection_setup_screen.dart';
 
 class PlantDiagnosticScreen extends StatefulWidget {
   final XFile? image;
+  final XFile? macroImage;
   final PlantDiagnosisResponse? diagnosis;
 
   const PlantDiagnosticScreen({
     super.key,
     this.image,
+    this.macroImage,
     this.diagnosis,
   });
 
@@ -33,6 +35,7 @@ class PlantDiagnosticScreen extends StatefulWidget {
 
 class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
   int _cardQuarterTurns = 0;
+  int _selectedVisualTab = 0; // 0 = Canopy Shot 1 (Annotated Lesions), 1 = Macro Shot 2 (Symptom Detail)
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _microorganismKey = GlobalKey();
   final GlobalKey _pestKey = GlobalKey();
@@ -244,6 +247,87 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
+            // Two-Shot Inspection Switcher (if macro image is attached)
+            if (widget.macroImage != null) ...[
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: isDark ? kDarkCardColor : Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      InkWell(
+                        onTap: () => setState(() => _selectedVisualTab = 0),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: _selectedVisualTab == 0 ? kPrimaryColor : Colors.transparent,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.eco_rounded,
+                                size: 15,
+                                color: _selectedVisualTab == 0 ? Colors.white : (isDark ? kDarkTextSecondary : kTextSecondary),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                "Canopy Overview (Shot 1)",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: _selectedVisualTab == 0 ? Colors.white : (isDark ? kDarkTextSecondary : kTextSecondary),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      InkWell(
+                        onTap: () => setState(() => _selectedVisualTab = 1),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: _selectedVisualTab == 1 ? const Color(0xFF059669) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.zoom_in_rounded,
+                                size: 15,
+                                color: _selectedVisualTab == 1 ? Colors.white : (isDark ? kDarkTextSecondary : kTextSecondary),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                "Macro Symptom (Shot 2)",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: _selectedVisualTab == 1 ? Colors.white : (isDark ? kDarkTextSecondary : kTextSecondary),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+
             // Visual Inspection / Annotated Lesion Preview (Tap to zoom & 90° rotation)
             _buildInteractiveCardPreview(spots?.annotatedImageBase64),
             const SizedBox(height: 16),
@@ -2285,7 +2369,10 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
 
   Future<void> _openFullScreenPreview(String? base64Str) async {
     Uint8List? bytes;
-    if (base64Str != null && base64Str.isNotEmpty) {
+    // When macro tab is selected, open macro file directly without spots overlay
+    if (_selectedVisualTab == 1 && widget.macroImage != null) {
+      bytes = null;
+    } else if (base64Str != null && base64Str.isNotEmpty) {
       try {
         final cleanB64 = base64Str.contains(',')
             ? base64Str.split(',')[1]
@@ -2294,9 +2381,13 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
       } catch (_) {}
     }
 
-    final File? file = widget.image != null ? File(widget.image!.path) : null;
+    final File? file = (_selectedVisualTab == 1 && widget.macroImage != null)
+        ? File(widget.macroImage!.path)
+        : (widget.image != null ? File(widget.image!.path) : null);
     final plantName = widget.diagnosis?.species.name.replaceAll('_', ' ') ?? "Plant Specimen";
-    final conditionName = widget.diagnosis?.diagnosis.conditionName.replaceAll('_', ' ') ?? "Pathology Diagnostics";
+    final conditionName = _selectedVisualTab == 1
+        ? "Macro Symptom Inspection (Shot 2)"
+        : (widget.diagnosis?.diagnosis.conditionName.replaceAll('_', ' ') ?? "Pathology Diagnostics");
 
     final updatedTurns = await Navigator.of(context).push<int>(
       MaterialPageRoute(
@@ -2319,6 +2410,16 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
   }
 
   Widget _buildVisualPreview(String? base64Str) {
+    // If user selected the Macro Symptom tab and macroImage is available, show macro shot
+    if (_selectedVisualTab == 1 && widget.macroImage != null) {
+      return Image.file(
+        File(widget.macroImage!.path),
+        height: 250,
+        width: double.infinity,
+        fit: BoxFit.cover,
+      );
+    }
+
     if (base64Str != null && base64Str.isNotEmpty) {
       try {
         final cleanB64 = base64Str.contains(',')

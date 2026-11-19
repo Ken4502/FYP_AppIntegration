@@ -9,11 +9,13 @@ import 'package:urbangreen/services/plant_service.dart';
 
 class PlantCaptureResultScreen extends StatefulWidget {
   final XFile image;
+  final XFile? macroImage;
   final PlantDiagnosisResponse diagnosis;
 
   const PlantCaptureResultScreen({
     super.key,
     required this.image,
+    this.macroImage,
     required this.diagnosis,
   });
 
@@ -552,6 +554,58 @@ class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
 
             const SizedBox(height: 14),
 
+            // Two-Shot Inspection Summary Banner (if macro photo was provided)
+            if (widget.macroImage != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: kDefaultPadding),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF059669).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFF059669).withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          File(widget.macroImage!.path),
+                          width: 44,
+                          height: 44,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Two-Shot Inspection Active",
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF047857),
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              "Shot 1 (Canopy Species ID) + Shot 2 (Macro Surface Pathology) cross-analyzed.",
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF065F46),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
             // 4-Category Multi-Dimension Quick Scorecard
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: kDefaultPadding),
@@ -623,6 +677,7 @@ class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
                       MaterialPageRoute(
                         builder: (context) => PlantDiagnosticScreen(
                           image: image,
+                          macroImage: widget.macroImage,
                           diagnosis: diagnosis,
                         ),
                       ),
