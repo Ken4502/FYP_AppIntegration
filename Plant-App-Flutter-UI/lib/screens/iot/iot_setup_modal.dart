@@ -411,10 +411,14 @@ class _Esp32CaptivePortalSetupModalState extends State<Esp32CaptivePortalSetupMo
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Select Home 2.4GHz Wi-Fi Network:',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: kTextPrimary),
+                  const Expanded(
+                    child: Text(
+                      'Select Home 2.4GHz Wi-Fi Network:',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: kTextPrimary),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
+                  const SizedBox(width: 8),
                   if (_isScanningWifi)
                     const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: kPrimaryColor))
                   else

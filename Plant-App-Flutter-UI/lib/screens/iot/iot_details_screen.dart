@@ -10,10 +10,9 @@ import '../../services/iot_hybrid_connectivity_service.dart';
 import '../../services/iot_firestore_service.dart';
 import '../../services/weather_service.dart';
 import '../../services/plant_service.dart';
-import '../../services/low_moisture_decision_service.dart';
-import 'low_moisture_decision_screen.dart';
 import 'iot_network_info_screen.dart';
 import 'iot_setup_wizard_screen.dart';
+import 'iot_settings_screen.dart';
 import '../../components/iot_connection_guide_sheet.dart';
 import '../../components/city_picker_sheet.dart';
 import '../garden/edit_plant_screen.dart';
@@ -120,7 +119,24 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     if (_isLoadingWeather) return;
     setState(() => _isLoadingWeather = true);
     try {
-      final w = await _weatherService.fetchLocalWeather();
+      final dev = _effectiveDevice;
+      WeatherData w;
+      if (dev.locationLatitude != null && dev.locationLongitude != null) {
+        w = await _weatherService.fetchLocalWeather(
+          latitude: dev.locationLatitude,
+          longitude: dev.locationLongitude,
+          locationName: dev.locationDisplayName,
+        );
+      } else {
+        // Fallback: resolve from phone GPS/IP and save into Cloud Firestore for this probe
+        final loc = await _weatherService.resolveUserLocation();
+        unawaited(_firestoreService.updateDeviceLocation(widget.device.id, loc));
+        w = await _weatherService.fetchLocalWeather(
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          locationName: loc.displayName,
+        );
+      }
       if (mounted) {
         setState(() {
           _weatherData = w;
@@ -132,6 +148,60 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     }
   }
 
+  /// Open dedicated IoT Settings Screen
+  void _openSettingsScreen() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => IotSettingsScreen(
+          device: _effectiveDevice,
+          plant: _plantService.getPlantForDevice(widget.device.id),
+          weatherData: _weatherData,
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  /// Change physical location of this IoT device (permanently registered in Firestore)
+  Future<void> _changeDeviceLocation() async {
+    await CityPickerSheet.show(
+      context,
+      onCitySelected: (loc) async {
+        // Optimistic local update immediately to eliminate UI flickering
+        setState(() {
+          _liveDevice = _effectiveDevice.copyWith(
+            locationCity: loc.city,
+            locationRegion: loc.region,
+            locationCountry: loc.country,
+            locationLatitude: loc.latitude,
+            locationLongitude: loc.longitude,
+          );
+        });
+
+        await _firestoreService.updateDeviceLocation(widget.device.id, loc);
+        final newWeather = await _weatherService.fetchLocalWeather(
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          locationName: loc.displayName,
+        );
+        if (mounted) {
+          setState(() {
+            _weatherData = newWeather;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('📍 IoT Location updated to ${loc.displayName} (Saved in Cloud Firestore)'),
+              backgroundColor: kPrimaryColor,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      },
+    );
+  }
+
   void _subscribeFirestore() {
     _deviceFirestoreSub?.cancel();
     _deviceFirestoreSub = _firestoreService.streamDevice(widget.device.id).listen((device) {
@@ -141,9 +211,20 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   }
 
   void _updateFromDevice(IotDevice device) {
+    // Preserve local location if incoming Firestore stream has empty/null location
+    if ((device.locationCity == null || device.locationCity!.trim().isEmpty) &&
+        (_liveDevice?.locationCity != null && _liveDevice!.locationCity!.trim().isNotEmpty)) {
+      device = device.copyWith(
+        locationCity: _liveDevice!.locationCity,
+        locationRegion: _liveDevice!.locationRegion,
+        locationCountry: _liveDevice!.locationCountry,
+        locationLatitude: _liveDevice!.locationLatitude,
+        locationLongitude: _liveDevice!.locationLongitude,
+      );
+    }
     _liveDevice = device;
     final int mPct = (device.moistureLevel != null)
-        ? (device.moistureLevel! * 100).round()
+        ? device.moisturePercentInt
         : _moisturePercent;
     final int raw = device.rawAdc ?? _rawAdc;
     final bool pump = device.isPumpRunning;
@@ -349,9 +430,31 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     );
 
     if (confirm == true && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: kPrimaryColor),
+                  SizedBox(height: 16),
+                  Text('Wiping ESP32 memory & resetting...', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 6),
+                  Text('Erasing Wi-Fi and NVS memory on the probe', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
       await _firestoreService.factoryResetDevice(widget.device.id);
-      _plantService.unassignDevice(widget.device.id);
       if (mounted) {
+        Navigator.pop(context); // Dismiss progress dialog
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Device wiped and removed. Ready for fresh setup.'),
@@ -557,23 +660,33 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     setState(() => _isResettingWifi = true);
 
     try {
-      // 1. Send remote reset to ESP32 if online
-      if (widget.device.isOnline) {
-        await _firestoreService.sendResetCommand(widget.device.id);
-        await Future.delayed(const Duration(milliseconds: 600));
-      }
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: kPrimaryColor),
+                  SizedBox(height: 16),
+                  Text('Resetting everything...', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 6),
+                  Text('Erasing ESP32 NVS flash and deleting cloud data', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
 
-      // 2. Completely delete device and all logs from Cloud Firestore
-      await _firestoreService.deleteDevice(widget.device.id);
-
-      // 3. Unassign from plant
-      _plantService.unassignDevice(widget.device.id);
-
-      // 4. Reset local hardware connectivity caches & activity logs
-      await _service.resetDeviceWifi(widget.device.id);
-      _service.clearActivityLogs();
+      // Full Factory Reset: dispatches command, waits for ESP32 ACK, deletes Firestore docs & local caches
+      await _firestoreService.factoryResetDevice(widget.device.id);
 
       if (!mounted) return;
+      Navigator.pop(context); // Dismiss progress dialog
       setState(() => _isResettingWifi = false);
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -587,6 +700,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
       Navigator.pop(context, true); // Returns to IoT screen, device is 100% gone
     } catch (e) {
       if (mounted) {
+        Navigator.pop(context); // Dismiss progress dialog if open
         setState(() => _isResettingWifi = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -653,20 +767,26 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     }
   }
 
-  void _togglePlantEnvironment(Plant plant) {
+  void _togglePlantEnvironment(Plant plant) async {
     final nextEnv = plant.isIndoor ? 'outdoor' : 'indoor';
     final updated = plant.copyWith(environment: nextEnv);
     _plantService.updatePlant(updated);
+    if (widget.device.id.isNotEmpty) {
+      widget.device.isIndoor = (nextEnv == 'indoor');
+      await _firestoreService.updateDeviceEnvironment(widget.device.id, isIndoor: nextEnv == 'indoor');
+    }
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(nextEnv == 'indoor'
-            ? '🏠 Set ${plant.name} to Indoor (RainGuard bypassed)'
-            : '🌿 Set ${plant.name} to Outdoor (RainGuard active)'),
-        backgroundColor: kStatusSuccess,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(nextEnv == 'indoor'
+              ? '🏠 Set ${plant.name} to Indoor (Sheltered mode)'
+              : '🌿 Set ${plant.name} to Outdoor (Live microclimate & RainGuard active)'),
+          backgroundColor: kStatusSuccess,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   void _startSmartHydrateWorkflow(Plant? plant) {
@@ -675,8 +795,9 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _SmartHydrateModal(
-        device: widget.device,
+        device: _effectiveDevice,
         plant: plant,
+        weatherData: _weatherData,
         currentMoisture: _moisturePercent,
         firestoreService: _firestoreService,
         onMoistureUpdated: (newM) {
@@ -828,6 +949,13 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                         tooltip: 'IoT Hotspot vs Wi-Fi Guide',
                         icon: const Icon(Icons.help_outline_rounded, color: kPrimaryColor, size: 22),
                         onPressed: () => showIotConnectionModesGuide(context),
+                      ),
+                      const SizedBox(width: 2),
+                      // Settings Action Button
+                      IconButton(
+                        tooltip: 'Probe Settings & Automations',
+                        icon: const Icon(Icons.settings_outlined, color: kPrimaryColor, size: 22),
+                        onPressed: _openSettingsScreen,
                       ),
                       const SizedBox(width: 4),
                       // 44x44 Circular Refresh Action matching Shop & Garden
@@ -1671,706 +1799,15 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     );
   }
 
-  Widget _buildLowMoistureNotificationCard() {
-    final dev = widget.device;
-    final isAuto = _mode == 'AUTO' || dev.autoWaterEnabled;
-    final isIgnored = dev.isLowMoistureAlertIgnored;
-    final isAlways = dev.lowMoistureAlwaysIgnored;
-
-    Color bannerColor = const Color(0xFF2E7D32);
-    IconData bannerIcon = Icons.notifications_active_rounded;
-    if (!dev.lowMoistureAlertEnabled) {
-      bannerColor = Colors.grey.shade600;
-      bannerIcon = Icons.notifications_off_outlined;
-    } else if (isAlways) {
-      bannerColor = Colors.red.shade700;
-      bannerIcon = Icons.notifications_off_rounded;
-    } else if (isIgnored) {
-      bannerColor = Colors.amber.shade800;
-      bannerIcon = Icons.snooze_rounded;
-    }
-
-    final isDark = context.isDarkMode;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? kDarkCardColor : kSurfaceColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: isAuto
-                    ? (isDark ? const Color(0xFF134E48) : Colors.teal.shade50)
-                    : (isDark ? kDarkSurfaceColor : kPrimaryColor.withValues(alpha: 0.12)),
-                child: Icon(
-                  isAuto ? Icons.autorenew_rounded : Icons.water_drop_outlined,
-                  color: isAuto ? Colors.tealAccent.shade400 : kPrimaryColor,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Watering Mode & Soil Alerts',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        color: isDark ? kDarkTextPrimary : kTextPrimary,
-                      ),
-                    ),
-                    Text(
-                      isAuto
-                          ? 'Auto watering active • Decision alerts disabled'
-                          : 'Manual watering active • Configure decision alerts',
-                      style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : kTextSecondary),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isAuto
-                      ? (isDark ? const Color(0xFF134E48) : Colors.teal.shade100)
-                      : (isDark ? const Color(0xFF451A03) : Colors.orange.shade100),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  isAuto ? 'AUTO' : 'MANUAL',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: isAuto
-                        ? (isDark ? const Color(0xFF5EEAD4) : Colors.teal.shade900)
-                        : (isDark ? const Color(0xFFFDBA74) : Colors.orange.shade900),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          // Mode Selector Strip
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: isDark ? kDarkSurfaceColor : kBackgroundColor,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: () => _setWateringMode('AUTO'),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isAuto ? Colors.teal.shade700 : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.autorenew_rounded, size: 14, color: isAuto ? Colors.white : Colors.grey.shade600),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Auto Watering',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: isAuto ? FontWeight.bold : FontWeight.w500,
-                              color: isAuto ? Colors.white : Colors.grey.shade700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: InkWell(
-                    onTap: () => _setWateringMode('MANUAL'),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: !isAuto ? kPrimaryColor : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.touch_app_outlined, size: 14, color: !isAuto ? Colors.white : Colors.grey.shade600),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Manual Mode',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: !isAuto ? FontWeight.bold : FontWeight.w500,
-                              color: !isAuto ? Colors.white : Colors.grey.shade700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // CASE 1: AUTO WATERING IS ACTIVE (Doesn't apply, so hide manual alert settings!)
-          if (isAuto) ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.teal.shade50.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.teal.shade200),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline_rounded, size: 18, color: Color(0xFF0F766E)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Automatic Hydration Managed by ESP32',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F766E)),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Hardware pump automatically runs when soil moisture drops below threshold. Manual decision notifications do not apply.',
-                          style: TextStyle(fontSize: 11, color: Colors.teal.shade900, height: 1.3),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ]
-
-          // CASE 2: MANUAL MODE IS ACTIVE (Show option to enable soil notification alert!)
-          else ...[
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text(
-                'Enable Soil Moisture Alert',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: kTextPrimary),
-              ),
-              subtitle: const Text(
-                'Notify when soil moisture is low so you can decide whether to water or snooze',
-                style: TextStyle(fontSize: 11, color: kTextSecondary),
-              ),
-              value: dev.lowMoistureAlertEnabled,
-              activeTrackColor: kPrimaryColor,
-              onChanged: (val) {
-                setState(() {
-                  dev.lowMoistureAlertEnabled = val;
-                });
-                _service.persistDevices();
-              },
-            ),
-
-            // ONLY WHEN ENABLED, THE SETTINGS BECOME VISIBLE!
-            if (dev.lowMoistureAlertEnabled) ...[
-              const Divider(height: 16, color: kBorderSubtle),
-
-              // Threshold Selector
-              const Text('Alert Trigger Threshold', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextPrimary)),
-              const SizedBox(height: 2),
-              Text('Alert when moisture drops below this level (Current: ${dev.lowMoistureThreshold}%)', style: const TextStyle(fontSize: 11, color: kTextSecondary)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [15, 20, 25, 30, 35].map((val) {
-                  final isSelected = dev.lowMoistureThreshold == val;
-                  return ChoiceChip(
-                    label: Text('< $val%'),
-                    selected: isSelected,
-                    selectedColor: kPrimaryColor.withValues(alpha: 0.2),
-                    labelStyle: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: isSelected ? kPrimaryColor : kTextPrimary,
-                    ),
-                    onSelected: (selected) {
-                      if (selected) {
-                        setState(() {
-                          dev.lowMoistureThreshold = val;
-                        });
-                        _firestoreService.updateThresholds(
-                          widget.device.id,
-                          lowThreshold: val,
-                          highThreshold: dev.highMoistureThreshold,
-                        );
-                      }
-                    },
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 14),
-
-              // Current Ignore / Snooze Status Box
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: bannerColor.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: bannerColor.withValues(alpha: 0.25)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(bannerIcon, size: 16, color: bannerColor),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            dev.lowMoistureIgnoreStatusText,
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: bannerColor),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      isAlways
-                          ? 'Alerts are muted indefinitely. You can un-mute anytime.'
-                          : (isIgnored
-                              ? 'Alert notifications for this probe are temporarily silenced.'
-                              : 'Active. You will receive a heads-up notification whenever soil moisture drops below ${dev.lowMoistureThreshold}%.'),
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        if (isIgnored) ...[
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
-                                setState(() {
-                                  dev.resetAlertIgnore();
-                                });
-                                _service.persistDevices();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('🔔 Low moisture alerts resumed for this IoT probe.'),
-                                    backgroundColor: kPrimaryColor,
-                                    behavior: SnackBarBehavior.floating,
-                                  ),
-                                );
-                              },
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: kPrimaryColor,
-                                side: const BorderSide(color: kPrimaryColor),
-                                padding: const EdgeInsets.symmetric(vertical: 8),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                              child: const FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text('Resume Alerts', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _showDeviceIgnorePicker,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.blueGrey.shade800,
-                              side: BorderSide(color: Colors.blueGrey.shade300),
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                isIgnored ? 'Change Duration' : 'Ignore / Snooze Alerts',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Quick Preview / Test Button
-              OutlinedButton.icon(
-                onPressed: () {
-                  final plant = PlantService().myPlants.firstWhere(
-                    (p) => p.iotDeviceId == dev.id,
-                    orElse: () => Plant(
-                      id: 'sample',
-                      name: dev.name,
-                      species: 'Monitored Specimen',
-                      imageUrl: 'assets/images/image_1.png',
-                      iotDeviceId: dev.id,
-                    ),
-                  );
-                  // Dispatch native notification & launch decision screen
-                  LowMoistureDecisionService().dispatchLowMoistureAlert(
-                    device: dev,
-                    currentMoisture: 18,
-                    force: true,
-                  );
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => LowMoistureDecisionScreen(
-                        device: dev,
-                        plant: plant,
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.touch_app_rounded, size: 16),
-                label: const FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text('Test Low Moisture Alert & Decision Flow', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kPrimaryColor,
-                  side: BorderSide(color: kPrimaryColor.withValues(alpha: 0.5)),
-                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
-            ],
-          ],
-          const SizedBox(height: 16),
-          const Divider(height: 1, color: kBorderSubtle),
-          const SizedBox(height: 14),
-
-          // Running Pump banner if on
-          if (_isPumpRunning) ...[
-            Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFBFDBFE)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.water_drop_rounded, color: Color(0xFF2563EB), size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Pump is currently ACTIVE (${_pumpElapsedSeconds}s)',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E40AF)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-
-          // Dual Watering Controls: Smart Hydrate vs Quick Water (3s)
-          Builder(
-            builder: (ctx) {
-              final Plant? assignedPlant = _plantService.getPlantForDevice(widget.device.id);
-              final int targetOptimal = assignedPlant?.optimalMaxMoisture ?? 65;
-
-              return Column(
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                      label: Text(
-                        'Smart Hydrate to Optimal ($targetOptimal%)',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: kPrimaryColor,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 1,
-                      ),
-                      onPressed: () => _startSmartHydrateWorkflow(assignedPlant),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.water_drop_outlined, size: 16),
-                          label: const Text('Quick Water (3s)'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: kPrimaryColor,
-                            side: const BorderSide(color: kPrimaryColor),
-                            padding: const EdgeInsets.symmetric(vertical: 11),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                          onPressed: _triggerWaterPulse,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: Icon(_isPumpRunning ? Icons.stop_rounded : Icons.play_arrow_rounded, size: 16),
-                          label: Text(_isPumpRunning ? 'Stop Pump' : 'Manual Override'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: _isPumpRunning ? kStatusDanger : Colors.grey.shade700,
-                            side: BorderSide(color: _isPumpRunning ? kStatusDanger : Colors.grey.shade400),
-                            padding: const EdgeInsets.symmetric(vertical: 11),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                          onPressed: _togglePumpState,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showDeviceIgnorePicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-          decoration: const BoxDecoration(
-            color: kSurfaceColor,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Colors.orange.shade50,
-                    child: Icon(Icons.snooze_rounded, color: Colors.orange.shade800, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Snooze Dry Soil Notifications',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: kTextPrimary),
-                        ),
-                        Text(
-                          'Select how long to ignore alerts for ${widget.device.name}',
-                          style: const TextStyle(fontSize: 12, color: kTextSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              _buildIgnoreDurationTile(
-                sheetContext: sheetContext,
-                icon: Icons.timer_outlined,
-                title: '1 Hour',
-                subtitle: 'Snooze alerts for 60 minutes',
-                duration: const Duration(hours: 1),
-                label: '1 hour',
-                always: false,
-              ),
-              const SizedBox(height: 8),
-              _buildIgnoreDurationTile(
-                sheetContext: sheetContext,
-                icon: Icons.today_outlined,
-                title: '1 Day',
-                subtitle: 'Silence alerts for 24 hours',
-                duration: const Duration(days: 1),
-                label: '1 day',
-                always: false,
-              ),
-              const SizedBox(height: 8),
-              _buildIgnoreDurationTile(
-                sheetContext: sheetContext,
-                icon: Icons.date_range_outlined,
-                title: '1 Week',
-                subtitle: 'Silence alerts for 7 full days',
-                duration: const Duration(days: 7),
-                label: '1 week',
-                always: false,
-              ),
-              const SizedBox(height: 8),
-              _buildIgnoreDurationTile(
-                sheetContext: sheetContext,
-                icon: Icons.calendar_month_outlined,
-                title: '1 Month',
-                subtitle: 'Silence alerts for 30 calendar days',
-                duration: const Duration(days: 30),
-                label: '1 month',
-                always: false,
-              ),
-              const SizedBox(height: 8),
-              _buildIgnoreDurationTile(
-                sheetContext: sheetContext,
-                icon: Icons.notifications_off_outlined,
-                title: 'Always (Indefinite)',
-                subtitle: 'Mute alerts indefinitely until un-muted here',
-                duration: null,
-                label: 'Always (Muted)',
-                always: true,
-                isDangerous: true,
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildIgnoreDurationTile({
-    required BuildContext sheetContext,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Duration? duration,
-    required String label,
-    required bool always,
-    bool isDangerous = false,
-  }) {
-    return InkWell(
-      onTap: () {
-        Navigator.pop(sheetContext);
-        setState(() {
-          if (always) {
-            widget.device.ignoreAlertAlways();
-          } else if (duration != null) {
-            widget.device.ignoreAlertFor(duration);
-          }
-        });
-        _service.persistDevices();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('⏸️ Low moisture alerts for "${widget.device.name}" ignored for $label.'),
-            backgroundColor: Colors.blueGrey.shade800,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      },
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: isDangerous ? Colors.red.shade50.withValues(alpha: 0.4) : kBackgroundColor,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isDangerous ? Colors.red.shade200 : kBorderSubtle,
-          ),
-        ),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: isDangerous ? Colors.red.shade100 : Colors.blueGrey.shade100,
-              child: Icon(icon, size: 18, color: isDangerous ? Colors.red.shade700 : Colors.blueGrey.shade800),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: isDangerous ? Colors.red.shade800 : kTextPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(fontSize: 11, color: isDangerous ? Colors.red.shade700 : kTextSecondary),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios_rounded, size: 13, color: isDangerous ? Colors.red.shade400 : Colors.grey.shade400),
-          ],
-        ),
-      ),
-    );
-  }
-
   // =========================================================================
-  // REAL-TIME LOCAL WEATHER WIDGET
+  // UNIFIED IOT LOCATION & REAL-TIME LOCAL MICROCLIMATE WIDGET
   // =========================================================================
-  Widget _buildRealTimeWeatherCard(bool isDark) {
-    if (_weatherData == null && _isLoadingWeather) {
-      return Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: isDark ? kDarkCardColor : kSurfaceColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
-        ),
-        child: const Center(
-          child: SizedBox(
-            height: 20,
-            width: 20,
-            child: CircularProgressIndicator(strokeWidth: 2, color: kPrimaryColor),
-          ),
-        ),
-      );
-    }
-
+  Widget _buildUnifiedLocationAndWeatherCard(bool isDark, IotDevice dev, Plant? assignedPlant) {
     final weather = _weatherData;
-    if (weather == null) return const SizedBox.shrink();
-
-    final isRainGuard = weather.isRainGuardActive;
-    final Plant? assignedPlant = _plantService.getPlantForDevice(widget.device.id);
-    final bool isIndoor = assignedPlant?.isIndoor ?? false;
+    final bool isIndoor = assignedPlant?.isIndoor ?? dev.isIndoor;
     final int critMin = assignedPlant?.criticalMinMoisture ?? 15;
 
-    // Environment & RainGuard Resolution
+    // Environmental & RainGuard Resolution
     String guardMessage;
     Color guardBgColor;
     Color guardBorderColor;
@@ -2378,12 +1815,12 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
     IconData guardIcon;
 
     if (isIndoor) {
-      guardMessage = '🏠 Indoor Specimen • RainGuard Bypassed\nSheltered from precipitation. Hydration decisions rely strictly on soil sensor telemetry.';
+      guardMessage = '🏠 Sheltered Indoors • RainGuard Bypassed\nProtected from precipitation and wind. Hydration target is kept stable at 65%.';
       guardBgColor = isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
       guardBorderColor = isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1);
       guardTextCol = isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
       guardIcon = Icons.home_rounded;
-    } else if (isRainGuard) {
+    } else if (weather != null && weather.isRainGuardActive) {
       if (_moisturePercent < critMin) {
         guardMessage = '🚨 Rain Expected Today • Critical Wilting Warning\nSoil is critically dry ($_moisturePercent% < $critMin%). A survival pulse is advised before rain arrives.';
         guardBgColor = isDark ? const Color(0xFF451A03) : const Color(0xFFFEF3C7);
@@ -2398,41 +1835,123 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
         guardIcon = Icons.beach_access_rounded;
       }
     } else {
-      guardMessage = '☀️ Clear Skies • Standard Outdoor Hydration Active';
+      guardMessage = '☀️ Clear Skies • Weather-Adaptive Outdoor Hydration Active\nTranspiration buffer enabled against outdoor solar evaporation.';
       guardBgColor = isDark ? Colors.black26 : const Color(0xFFF0FDF4);
       guardBorderColor = isDark ? const Color(0xFF14532D) : const Color(0xFFBBF7D0);
       guardTextCol = isDark ? Colors.green.shade200 : const Color(0xFF15803D);
       guardIcon = Icons.wb_sunny_rounded;
     }
 
-    return InkWell(
-      onTap: () {
-        CityPickerSheet.show(
-          context,
-          onCitySelected: (loc) async {
-            final newWeather = await _weatherService.selectCity(loc);
-            if (mounted) setState(() => _weatherData = newWeather);
-          },
-        );
-      },
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: isDark ? kDarkCardColor : kSurfaceColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? kDarkCardColor : kSurfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Section Top: Title & Change Site Action
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.location_on_rounded, color: Color(0xFF0284C7), size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'IoT Physical Site & Microclimate',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: isDark ? kDarkTextPrimary : kTextPrimary,
+                      ),
+                    ),
+                    Text(
+                      'Cloud-registered to this probe • Drives adaptive care',
+                      style: TextStyle(fontSize: 10.5, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: _changeDeviceLocation,
+                icon: const Icon(Icons.edit_location_alt_rounded, size: 14),
+                label: const Text('Change Site', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF0284C7),
+                  side: const BorderSide(color: Color(0xFF0284C7)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Location Pill (Unified)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: isDark ? kDarkSurfaceColor : kBackgroundColor,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+            child: Row(
+              children: [
+                const Icon(Icons.place_rounded, size: 16, color: Color(0xFF0284C7)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    dev.locationDisplayName,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? kDarkTextPrimary : kTextPrimary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0284C7).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    'Cloud Saved',
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0284C7),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Weather Data Row
+          if (weather != null) ...[
             Row(
               children: [
                 Text(
@@ -2444,26 +1963,17 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              '${weather.locationName} • ${weather.weatherCondition}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                color: isDark ? kDarkTextPrimary : kTextPrimary,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.edit_location_alt_rounded, size: 14, color: kPrimaryColor),
-                        ],
+                      Text(
+                        '${weather.weatherCondition} • ${weather.temperature.toStringAsFixed(1)}°C',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: isDark ? kDarkTextPrimary : kTextPrimary,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '${weather.temperature.toStringAsFixed(1)}°C • ${weather.relativeHumidity}% Humidity • Rain: ${weather.rainAmount}mm (${weather.precipitationProbability}%)',
+                        '${weather.relativeHumidity}% Humidity • Rain: ${weather.rainAmount}mm (${weather.precipitationProbability}%)',
                         style: TextStyle(
                           fontSize: 11,
                           color: isDark ? kDarkTextSecondary : kTextSecondary,
@@ -2472,10 +1982,10 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                     ],
                   ),
                 ),
-                const Icon(Icons.keyboard_arrow_right_rounded, size: 18, color: Colors.grey),
               ],
             ),
             const SizedBox(height: 10),
+            // Environmental Context Banner
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -2503,9 +2013,1112 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                 ],
               ),
             ),
+          ] else if (_isLoadingWeather) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0284C7)),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Synchronizing live weather for ${dev.locationDisplayName}...',
+                    style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Icon(Icons.cloud_off_rounded, size: 16, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Tap "Change Site" to update or pull to refresh weather.',
+                    style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                  ),
+                ],
+              ),
+            ),
           ],
+        ],
+      ),
+    );
+  }
+
+  // =========================================================================
+  // SUB-SECTION HEADERS & MODULAR CARDS (PRIORITIZED UI/UX ARCHITECTURE)
+  // =========================================================================
+
+  Widget _buildSectionHeader(String title, String subtitle, IconData icon, Color color) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10, top: 4),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.3,
+                    color: isDark ? kDarkTextPrimary : kTextPrimary,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: isDark ? kDarkTextSecondary : kTextSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeartbeatStatusBanner(bool isDark, IotDevice dev) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: _isConnected ? kStatusSuccess.withValues(alpha: 0.1) : const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _isConnected ? kStatusSuccess.withValues(alpha: 0.3) : const Color(0xFFFDE68A),
         ),
       ),
+      child: Row(
+        children: [
+          Container(
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: _isConnected ? kStatusSuccess : const Color(0xFFD97706),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _systemState == 'FALLBACK_HOTSPOT'
+                      ? 'Grace Hotspot Active • Auto-Watering Guardrails Online'
+                      : (_isConnected ? 'Device Online • Live Telemetry Active' : 'Device Standby / Offline'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: _systemState == 'FALLBACK_HOTSPOT'
+                        ? const Color(0xFFD97706)
+                        : (_isConnected ? kStatusSuccess : const Color(0xFFB45309)),
+                  ),
+                ),
+                Text(
+                  _isConnected
+                      ? 'Telemetry synced: ${_formatDateTime(_lastReadingAt)}'
+                      : 'Last seen: ${_formatDateTime(dev.lastSeen)}',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: _isConnected ? kStatusSuccess.withValues(alpha: 0.8) : const Color(0xFF92400E),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: (_systemState == 'FALLBACK_HOTSPOT'
+                      ? const Color(0xFFD97706)
+                      : (_isConnected ? kStatusSuccess : const Color(0xFFD97706)))
+                  .withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              dev.stateDisplayLabel.toUpperCase(),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: _systemState == 'FALLBACK_HOTSPOT'
+                    ? const Color(0xFFD97706)
+                    : (_isConnected ? kStatusSuccess : const Color(0xFFD97706)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroSoilMoistureCard({
+    required bool isDark,
+    required IotDevice dev,
+    required Plant? assignedPlant,
+    required Color statusColor,
+    required String statusLabel,
+    required int tCrit,
+    required int tOptMin,
+    required int tOptMax,
+    required int tMax,
+    required bool willRainToday,
+    required int effectiveAlertThreshold,
+  }) {
+    final bool isAuto = _mode == 'AUTO' || dev.autoWaterEnabled;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: isDark ? kDarkCardColor : kSurfaceColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Row 1: Title & Moisture Status Badge
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Soil Moisture Level',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: isDark ? kDarkTextPrimary : kTextPrimary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: statusColor),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Giant Moisture Value
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                '$_moisturePercent',
+                style: TextStyle(
+                  fontSize: 62,
+                  fontWeight: FontWeight.w900,
+                  color: statusColor,
+                  height: 1.0,
+                ),
+              ),
+              Text(
+                '%',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? kDarkTextSecondary : kTextSecondary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Progress Bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: (_moisturePercent / 100.0).clamp(0.0, 1.0),
+              minHeight: 14,
+              backgroundColor: isDark ? kDarkSurfaceColor : kBackgroundColor,
+              valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Species 4-Tier Moisture Spectrum Strip
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: isDark ? kDarkSurfaceColor : kBackgroundColor,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                _buildMiniSpectrumIndicator('Wilting', '<$tCrit%', const Color(0xFFDC2626)),
+                const SizedBox(width: 4),
+                _buildMiniSpectrumIndicator('Thirsty', '$tCrit-$tOptMin%', const Color(0xFFD97706)),
+                const SizedBox(width: 4),
+                _buildMiniSpectrumIndicator('Optimal', '$tOptMin-$tOptMax%', const Color(0xFF16A34A)),
+                const SizedBox(width: 4),
+                _buildMiniSpectrumIndicator('Overwater', '>$tMax%', const Color(0xFFB91C1C)),
+              ],
+            ),
+          ),
+
+          // Dynamic Alert / Advisory Banners
+          if (_moisturePercent < tCrit) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEE2E2),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFCA5A5)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.warning_amber_rounded, size: 16, color: Color(0xFFDC2626)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '🚨 Critical Drought Alert ($_moisturePercent% < $tCrit%): Soil is critically dry! Severe risk of root desiccation and leaf wilt. Immediate hydration recommended.',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFB91C1C), height: 1.3),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else if (_moisturePercent > tMax) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFECACA)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.water_rounded, size: 16, color: Color(0xFFDC2626)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '⚠️ Overwater Warning ($_moisturePercent% > $tMax%): Soil is saturated and waterlogged. Risk of root rot and oxygen deprivation. Halt all irrigation and ensure drainage.',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF991B1B), height: 1.3),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else if (_moisturePercent < tOptMin) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: willRainToday ? const Color(0xFFEFF6FF) : const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: willRainToday ? const Color(0xFFBFDBFE) : const Color(0xFFFDE68A)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(willRainToday ? Icons.beach_access_rounded : Icons.info_outline_rounded,
+                      size: 16, color: willRainToday ? const Color(0xFF2563EB) : const Color(0xFFD97706)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      willRainToday
+                          ? '🌧️ Rain Expected Today: Soil is nearing low ($_moisturePercent%), but rainfall will hydrate naturally without pump action.'
+                          : '💧 Soil Running Low: Soil moisture is nearing the dry side ($_moisturePercent% < $tOptMin%). Time to water or tap Smart Hydrate.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: willRainToday ? const Color(0xFF1D4ED8) : const Color(0xFFB45309),
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Dynamic Species & Weather Soil Moisture Alert Triggered Banner
+          if (dev.lowMoistureAlertEnabled && _moisturePercent < effectiveAlertThreshold && _moisturePercent >= tCrit) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFDE68A)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.notifications_active_rounded, size: 16, color: Color(0xFFD97706)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '🚨 Low Moisture Alert Triggered ($_moisturePercent% < $effectiveAlertThreshold%)',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFB45309)),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          dev.getDynamicAlertThresholdExplanation(plant: assignedPlant, weatherData: _weatherData),
+                          style: const TextStyle(fontSize: 10.5, color: Color(0xFF92400E), height: 1.3),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+
+          // Running Pump Banner (if running)
+          if (_isPumpRunning) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFBFDBFE)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.water_drop_rounded, color: Color(0xFF2563EB), size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Pump is currently ACTIVE (${_pumpElapsedSeconds}s)',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E40AF)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // IMMEDIATE ACTION BUTTONS (Hero Priority)
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.water_drop_rounded, size: 18),
+                  label: const Text('Water Now (3s)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kPrimaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 1,
+                  ),
+                  onPressed: _triggerWaterPulse,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: OutlinedButton.icon(
+                  icon: Icon(_isPumpRunning ? Icons.stop_rounded : Icons.power_settings_new_rounded, size: 16),
+                  label: Text(
+                    _isPumpRunning ? 'Stop' : 'Manual',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _isPumpRunning ? kStatusDanger : (isDark ? kDarkTextPrimary : kTextPrimary),
+                    side: BorderSide(
+                      color: _isPumpRunning ? kStatusDanger : (isDark ? kDarkBorderSubtle : kBorderSubtle),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _togglePumpState,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Mode Switcher Capsule
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: isDark ? kDarkSurfaceColor : kBackgroundColor,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () => _setWateringMode('AUTO'),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isAuto ? Colors.teal.shade700 : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.autorenew_rounded, size: 13, color: isAuto ? Colors.white : Colors.grey.shade600),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Auto Mode',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: isAuto ? FontWeight.bold : FontWeight.w500,
+                              color: isAuto ? Colors.white : Colors.grey.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: InkWell(
+                    onTap: () => _setWateringMode('MANUAL'),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      decoration: BoxDecoration(
+                        color: !isAuto ? kPrimaryColor : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.touch_app_outlined, size: 13, color: !isAuto ? Colors.white : Colors.grey.shade600),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Manual Mode',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: !isAuto ? FontWeight.bold : FontWeight.w500,
+                              color: !isAuto ? Colors.white : Colors.grey.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Divider(height: 1, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+          const SizedBox(height: 10),
+
+          // Timestamps footer
+          Row(
+            children: [
+              Icon(Icons.schedule_rounded, size: 12, color: isDark ? kDarkTextSecondary : kTextSecondary),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  'Last Reading: ${_formatDateTime(_lastReadingAt)}',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isDark ? kDarkTextSecondary : kTextSecondary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.water_drop_outlined, size: 12, color: kPrimaryColor),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  'Last Watered: ${_formatDateTime(_lastWateredAt)}',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? kDarkTextSecondary : kTextSecondary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsAndAutomationsHubCard(bool isDark, IotDevice dev, Plant? assignedPlant) {
+    final bool isAuto = _mode == 'AUTO' || dev.autoWaterEnabled;
+    final int dynamicThreshold = dev.calculateDynamicAlertThreshold(
+      plant: assignedPlant,
+      weatherData: _weatherData,
+    );
+    final int effectiveThreshold = dev.dynamicMoistureAlertEnabled
+        ? dynamicThreshold
+        : dev.lowMoistureThreshold;
+    final bool effectiveIndoor = assignedPlant?.isIndoor ?? dev.isIndoor;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: isDark ? kDarkCardColor : kSurfaceColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F766E).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.tune_rounded, color: Color(0xFF0F766E), size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Automation & Alert Preferences',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: isDark ? kDarkTextPrimary : kTextPrimary,
+                      ),
+                    ),
+                    Text(
+                      'Environment, irrigation mode, and smart thresholds',
+                      style: TextStyle(fontSize: 11, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // 4-item status grid
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDark ? kDarkSurfaceColor : kBackgroundColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+            ),
+            child: Column(
+              children: [
+                _buildSettingSummaryRow(
+                  icon: effectiveIndoor ? Icons.home_rounded : Icons.park_rounded,
+                  iconColor: effectiveIndoor ? const Color(0xFF0284C7) : const Color(0xFF16A34A),
+                  title: 'Deployment Mode',
+                  value: effectiveIndoor ? 'Indoor (Sheltered)' : 'Outdoor (Adaptive)',
+                  isDark: isDark,
+                ),
+                const Divider(height: 14, thickness: 0.5),
+                _buildSettingSummaryRow(
+                  icon: isAuto ? Icons.smart_toy_rounded : Icons.touch_app_rounded,
+                  iconColor: isAuto ? const Color(0xFF0D9488) : const Color(0xFFD97706),
+                  title: 'Irrigation Control',
+                  value: isAuto ? 'Autonomous (AUTO)' : 'Manual Decision',
+                  isDark: isDark,
+                ),
+                const Divider(height: 14, thickness: 0.5),
+                _buildSettingSummaryRow(
+                  icon: Icons.notifications_active_rounded,
+                  iconColor: dev.lowMoistureAlertEnabled ? const Color(0xFF16A34A) : Colors.grey,
+                  title: 'Soil Moisture Alert',
+                  value: !dev.lowMoistureAlertEnabled
+                      ? 'Disabled'
+                      : dev.dynamicMoistureAlertEnabled
+                          ? 'Dynamic ($effectiveThreshold%)'
+                          : 'Custom ($effectiveThreshold%)',
+                  isDark: isDark,
+                ),
+                const Divider(height: 14, thickness: 0.5),
+                _buildSettingSummaryRow(
+                  icon: Icons.wb_sunny_rounded,
+                  iconColor: dev.dailyWeatherNotificationEnabled ? const Color(0xFFF59E0B) : Colors.grey,
+                  title: 'Daily Weather Briefing',
+                  value: dev.dailyWeatherNotificationEnabled ? 'Enabled (9:00 AM)' : 'Disabled',
+                  isDark: isDark,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Action Button to Open Dedicated Settings Screen
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _openSettingsScreen,
+              icon: const Icon(Icons.settings_outlined, size: 17),
+              label: const Text(
+                'Configure Settings & Notifications',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F766E),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingSummaryRow({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String value,
+    required bool isDark,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: iconColor),
+        const SizedBox(width: 8),
+        Expanded(
+          flex: 5,
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: isDark ? kDarkTextPrimary : kTextPrimary,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          flex: 6,
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.bold,
+              color: iconColor,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDynamicSmartWateringCard(
+    bool isDark,
+    IotDevice dev,
+    Plant? assignedPlant,
+    int dynamicTarget,
+  ) {
+    final explanation = dev.getDynamicWateringExplanation(_weatherData, plant: assignedPlant);
+    final bool isIndoor = assignedPlant?.isIndoor ?? dev.isIndoor;
+
+    Color badgeColor;
+    String badgeTitle;
+    IconData badgeIcon;
+
+    if (isIndoor) {
+      badgeColor = const Color(0xFF0284C7);
+      badgeTitle = 'Fixed Target: 65% (Indoor Sheltered)';
+      badgeIcon = Icons.shield_outlined;
+    } else if (_weatherData?.isRainGuardActive ?? false) {
+      badgeColor = const Color(0xFF2563EB);
+      badgeTitle = 'Rain Guard Active: Target 50%';
+      badgeIcon = Icons.beach_access_rounded;
+    } else if ((_weatherData?.temperature ?? 0) >= 32.0 || ((_weatherData?.relativeHumidity ?? 100) < 50)) {
+      badgeColor = const Color(0xFFDC2626);
+      badgeTitle = 'Heat Reserve Boost: Target 70%';
+      badgeIcon = Icons.local_fire_department_rounded;
+    } else if ((_weatherData?.relativeHumidity ?? 0) > 80 || ((_weatherData?.temperature ?? 30) < 24.0)) {
+      badgeColor = const Color(0xFF0D9488);
+      badgeTitle = 'Humid/Cool Relaxed: Target 60%';
+      badgeIcon = Icons.cloud_outlined;
+    } else {
+      badgeColor = const Color(0xFF16A34A);
+      badgeTitle = 'Optimal Outdoor Target: 65%';
+      badgeIcon = Icons.wb_sunny_rounded;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? kDarkCardColor : kSurfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: badgeColor.withValues(alpha: 0.35)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: badgeColor.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.auto_awesome_rounded, color: badgeColor, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Smart Watering Intelligence',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13.5,
+                        color: isDark ? kDarkTextPrimary : kTextPrimary,
+                      ),
+                    ),
+                    Text(
+                      isIndoor ? 'Sheltered mode (Constant target)' : 'Live microclimate adaptive target',
+                      style: TextStyle(fontSize: 10.5, color: isDark ? kDarkTextSecondary : kTextSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: badgeColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(badgeIcon, size: 12, color: badgeColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$dynamicTarget%',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: badgeColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Contextual Explanation Box
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: badgeColor.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: badgeColor.withValues(alpha: 0.25)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(badgeIcon, size: 16, color: badgeColor),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        badgeTitle,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.bold,
+                          color: badgeColor,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        explanation,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? Colors.grey.shade300 : Colors.blueGrey.shade900,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Action: Smart Hydrate Button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+              label: Text(
+                'Smart Hydrate to Optimal ($dynamicTarget%)',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: badgeColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 1,
+              ),
+              onPressed: () => _startSmartHydrateWorkflow(assignedPlant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // =========================================================================
+  // LOCKED STATE: NO PLANT SPECIMEN ASSIGNED
+  // =========================================================================
+  Widget _buildNoPlantAssignedLockedState(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: isDark ? kDarkCardColor : kSurfaceColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: kPrimaryColor.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.yard_outlined,
+              color: kPrimaryColor,
+              size: 42,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No Plant Specimen Assigned',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: isDark ? kDarkTextPrimary : kTextPrimary,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'This IoT Smart Probe is active, but soil moisture metrics, species-driven hydration spectrums, and dynamic weather alerts require an assigned plant from your garden.',
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark ? kDarkTextSecondary : kTextSecondary,
+              height: 1.45,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          // Feature preview cards
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark ? kDarkSurfaceColor : kBackgroundColor,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+            ),
+            child: Column(
+              children: [
+                _buildLockedFeatureRow(
+                  icon: Icons.water_drop_outlined,
+                  color: const Color(0xFF0284C7),
+                  title: 'Species Moisture Spectrum',
+                  subtitle: 'Customized wilting, thirsty, and optimal saturation ranges.',
+                  isDark: isDark,
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Divider(height: 1),
+                ),
+                _buildLockedFeatureRow(
+                  icon: Icons.beach_access_rounded,
+                  color: const Color(0xFF2563EB),
+                  title: 'Adaptive Weather & RainGuard',
+                  subtitle: 'Dynamic watering adjustments based on live local rainfall.',
+                  isDark: isDark,
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Divider(height: 1),
+                ),
+                _buildLockedFeatureRow(
+                  icon: Icons.notifications_active_outlined,
+                  color: const Color(0xFF16A34A),
+                  title: 'Species Baseline Soil Alerts',
+                  subtitle: 'Notifies you when soil drops below plant survival thresholds.',
+                  isDark: isDark,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.add_link_rounded, size: 20),
+              label: const Text(
+                'Assign Plant to this Sensor',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kPrimaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 2,
+              ),
+              onPressed: _showPlantAssignmentModal,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '💡 You can configure probe hardware and Wi-Fi anytime from the Device & Wi-Fi tab.',
+            style: TextStyle(
+              fontSize: 11,
+              color: isDark ? kDarkTextSecondary.withValues(alpha: 0.8) : kTextSecondary,
+              fontStyle: FontStyle.italic,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLockedFeatureRow({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+    required bool isDark,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 16, color: color),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? kDarkTextPrimary : kTextPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark ? kDarkTextSecondary : kTextSecondary,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -2514,15 +3127,40 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   // =========================================================================
   Widget _buildPlantAndCarePanel() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final Plant? assignedPlant = _plantService.getPlantForDevice(widget.device.id);
+    final dev = _effectiveDevice;
+    final Plant? assignedPlant = _plantService.getPlantForDevice(dev.id);
+
+    // If no plant is assigned to this probe, hide all care telemetry & spectrums
+    if (assignedPlant == null) {
+      return RefreshIndicator(
+        color: kPrimaryColor,
+        onRefresh: _manualRefresh,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(kDefaultPadding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildGraceHotspotBanner(isDark),
+              _buildNoPlantAssignedLockedState(isDark),
+            ],
+          ),
+        ),
+      );
+    }
+
     final statusColor = _getMoistureColor(_moisturePercent, assignedPlant);
     final statusLabel = _getMoistureStatusLabel(_moisturePercent, assignedPlant);
-    final int tCrit = assignedPlant?.criticalMinMoisture ?? 15;
-    final int tOptMin = assignedPlant?.optimalMinMoisture ?? 28;
-    final int tOptMax = assignedPlant?.optimalMaxMoisture ?? 65;
-    final int tMax = assignedPlant?.overwaterMaxMoisture ?? 78;
-    final bool isOutdoor = assignedPlant?.isOutdoor ?? false;
+    final int tCrit = assignedPlant.criticalMinMoisture;
+    final int tOptMin = assignedPlant.optimalMinMoisture;
+    final int tOptMax = assignedPlant.optimalMaxMoisture;
+    final int tMax = assignedPlant.overwaterMaxMoisture;
+    final bool isOutdoor = !assignedPlant.isIndoor;
     final bool willRainToday = isOutdoor && (_weatherData?.isRainGuardActive ?? false);
+    final int dynamicTarget = dev.calculateDynamicTargetMoisture(_weatherData, plant: assignedPlant);
+    final int effectiveAlertThreshold = dev.dynamicMoistureAlertEnabled
+        ? dev.calculateDynamicAlertThreshold(plant: assignedPlant, weatherData: _weatherData)
+        : dev.lowMoistureThreshold;
 
     return RefreshIndicator(
       color: kPrimaryColor,
@@ -2532,362 +3170,79 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
         padding: const EdgeInsets.all(kDefaultPadding),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildGraceHotspotBanner(isDark),
+          children: [
+            _buildGraceHotspotBanner(isDark),
 
-          // 1. Live status banner (Friendly & reassuring)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: _isConnected ? kStatusSuccess.withValues(alpha: 0.1) : const Color(0xFFFEF3C7),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _isConnected ? kStatusSuccess.withValues(alpha: 0.3) : const Color(0xFFFDE68A),
-              ),
+            // ===============================================================
+            // SUB-SECTION 1: HERO PRIORITY — VITAL TELEMETRY & ACTIONS
+            // ===============================================================
+            _buildSectionHeader(
+              '1. VITAL TELEMETRY & CONTROLS',
+              'Real-time soil hydration and immediate water actuation',
+              Icons.water_drop_rounded,
+              kPrimaryColor,
             ),
-            child: Row(
-              children: [
-                Container(
-                  width: 9,
-                  height: 9,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _isConnected ? kStatusSuccess : const Color(0xFFD97706),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _systemState == 'FALLBACK_HOTSPOT'
-                            ? 'Grace Hotspot Active • Auto-Watering Guardrails Online'
-                            : (_isConnected ? 'Device Online • Heartbeat Active' : 'Device Offline / Standby'),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: _systemState == 'FALLBACK_HOTSPOT'
-                              ? const Color(0xFFD97706)
-                              : (_isConnected ? kStatusSuccess : const Color(0xFFB45309)),
-                        ),
-                      ),
-                      Text(
-                        _isConnected
-                            ? 'Last reading: ${_formatDateTime(_lastReadingAt)}'
-                            : 'Last seen: ${_formatDateTime(widget.device.lastSeen)}',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: _isConnected ? kStatusSuccess.withValues(alpha: 0.8) : const Color(0xFF92400E),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: (_systemState == 'FALLBACK_HOTSPOT'
-                            ? const Color(0xFFD97706)
-                            : (_isConnected ? kStatusSuccess : const Color(0xFFD97706)))
-                        .withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    widget.device.stateDisplayLabel.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: _systemState == 'FALLBACK_HOTSPOT'
-                          ? const Color(0xFFD97706)
-                          : (_isConnected ? kStatusSuccess : const Color(0xFFD97706)),
-                    ),
-                  ),
-                ),
-              ],
+            _buildHeartbeatStatusBanner(isDark, dev),
+            const SizedBox(height: 12),
+            _buildHeroSoilMoistureCard(
+              isDark: isDark,
+              dev: dev,
+              assignedPlant: assignedPlant,
+              statusColor: statusColor,
+              statusLabel: statusLabel,
+              tCrit: tCrit,
+              tOptMin: tOptMin,
+              tOptMax: tOptMax,
+              tMax: tMax,
+              willRainToday: willRainToday,
+              effectiveAlertThreshold: effectiveAlertThreshold,
             ),
-          ),
-          const SizedBox(height: 14),
+            const SizedBox(height: 20),
 
-          // Real-Time Local Weather Card
-          _buildRealTimeWeatherCard(isDark),
-          const SizedBox(height: 16),
-
-          // 2. Linked Specimen Card (Strict 1-to-1 Mapping) - Plant First!
-          _buildAssignedPlantSection(),
-          const SizedBox(height: 16),
-
-          // 3. Soil Moisture Level Card
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: isDark ? kDarkCardColor : kSurfaceColor,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+            // ===============================================================
+            // SUB-SECTION 2: CONTEXT PRIORITY — SPECIMEN & ENVIRONMENT
+            // ===============================================================
+            _buildSectionHeader(
+              '2. SPECIMEN & SITE ENVIRONMENT',
+              'Assigned botanical specimen, IoT location, and dynamic watering intelligence',
+              Icons.eco_rounded,
+              const Color(0xFF16A34A),
             ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Soil Moisture Level',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                          color: isDark ? kDarkTextPrimary : kTextPrimary,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: statusColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(
-                          statusLabel,
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: statusColor),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
+            _buildAssignedPlantSection(),
+            const SizedBox(height: 12),
+            _buildUnifiedLocationAndWeatherCard(isDark, dev, assignedPlant),
+            const SizedBox(height: 12),
+            _buildDynamicSmartWateringCard(isDark, dev, assignedPlant, dynamicTarget),
+            const SizedBox(height: 20),
 
-                // Giant Moisture Value
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      '$_moisturePercent',
-                      style: TextStyle(
-                        fontSize: 60,
-                        fontWeight: FontWeight.w900,
-                        color: statusColor,
-                        height: 1.0,
-                      ),
-                    ),
-                    Text(
-                      '%',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? kDarkTextSecondary : kTextSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-
-                // Progress Bar
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: LinearProgressIndicator(
-                    value: (_moisturePercent / 100.0).clamp(0.0, 1.0),
-                    minHeight: 14,
-                    backgroundColor: isDark ? kDarkSurfaceColor : kBackgroundColor,
-                    valueColor: AlwaysStoppedAnimation<Color>(statusColor),
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // Species 4-Tier Moisture Spectrum Strip
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isDark ? kDarkSurfaceColor : kBackgroundColor,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    children: [
-                      _buildMiniSpectrumIndicator('Wilting', '<$tCrit%', const Color(0xFFDC2626)),
-                      const SizedBox(width: 4),
-                      _buildMiniSpectrumIndicator('Thirsty', '$tCrit-$tOptMin%', const Color(0xFFD97706)),
-                      const SizedBox(width: 4),
-                      _buildMiniSpectrumIndicator('Optimal', '$tOptMin-$tOptMax%', const Color(0xFF16A34A)),
-                      const SizedBox(width: 4),
-                      _buildMiniSpectrumIndicator('Overwater', '>$tMax%', const Color(0xFFB91C1C)),
-                    ],
-                  ),
-                ),
-
-                // Dynamic Alert / Advisory Banners
-                if (_moisturePercent < tCrit) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEE2E2),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFFCA5A5)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.warning_amber_rounded, size: 16, color: Color(0xFFDC2626)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '🚨 Critical Drought Alert ($_moisturePercent% < $tCrit%): Soil is critically dry! Severe risk of root desiccation and leaf wilt. Immediate hydration recommended.',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFB91C1C), height: 1.3),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ] else if (_moisturePercent > tMax) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFFECACA)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.water_rounded, size: 16, color: Color(0xFFDC2626)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '⚠️ Overwater Warning ($_moisturePercent% > $tMax%): Soil is saturated and waterlogged. Risk of root rot and oxygen deprivation. Halt all irrigation and ensure drainage.',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF991B1B), height: 1.3),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ] else if (_moisturePercent < tOptMin) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: willRainToday ? const Color(0xFFEFF6FF) : const Color(0xFFFFFBEB),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: willRainToday ? const Color(0xFFBFDBFE) : const Color(0xFFFDE68A)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(willRainToday ? Icons.beach_access_rounded : Icons.info_outline_rounded,
-                            size: 16, color: willRainToday ? const Color(0xFF2563EB) : const Color(0xFFD97706)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            willRainToday
-                                ? '🌧️ Rain Expected Today: Soil is nearing low ($_moisturePercent%), but rainfall will hydrate naturally without pump action.'
-                                : '💧 Soil Running Low: Soil moisture is nearing the dry side ($_moisturePercent% < $tOptMin%). Time to water or tap Smart Hydrate.',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: willRainToday ? const Color(0xFF1D4ED8) : const Color(0xFFB45309),
-                              height: 1.3,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-
-                const SizedBox(height: 12),
-
-                // Friendly target & power info
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Target Range: $tOptMin% - $tOptMax%',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: isDark ? kDarkTextSecondary : kTextSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          assignedPlant?.isIndoor == true ? Icons.home_rounded : Icons.park_rounded,
-                          size: 13,
-                          color: assignedPlant?.isIndoor == true ? Colors.blue : Colors.green,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          assignedPlant?.isIndoor == true ? 'Indoor Specimen' : 'Outdoor Specimen',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: isDark ? kDarkTextSecondary : kTextSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                Divider(height: 18, color: isDark ? kDarkBorderSubtle : kBorderSubtle),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.schedule_rounded, size: 12, color: isDark ? kDarkTextSecondary : kTextSecondary),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Last Reading: ${_formatDateTime(_lastReadingAt)}',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: isDark ? kDarkTextSecondary : kTextSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.water_drop_outlined, size: 12, color: kPrimaryColor),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Last Watered: ${_formatDateTime(_lastWateredAt)}',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? kDarkTextSecondary : kTextSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
+            // ===============================================================
+            // SUB-SECTION 3: AUTOMATION RULES & SOIL NOTIFICATIONS
+            // ===============================================================
+            _buildSectionHeader(
+              '3. AUTOMATION & ALERT RULES',
+              'Threshold triggers, notification snooze, and anti-flooding cooldown',
+              Icons.tune_rounded,
+              const Color(0xFF0F766E),
             ),
-          ),
-          const SizedBox(height: 16),
+            _buildSettingsAndAutomationsHubCard(isDark, dev, assignedPlant),
+            const SizedBox(height: 20),
 
-          // 4. Watering Mode & Decision Alerts (Integrated with Quick Action buttons!)
-          _buildLowMoistureNotificationCard(),
-          const SizedBox(height: 16),
-
-          // 5. Diagnostics & Sensor History (Collapsible Progressive Disclosure at bottom)
-          _buildSensorDiagnosticsAccordion(statusColor),
-          const SizedBox(height: 24),
-        ],
+            // ===============================================================
+            // SUB-SECTION 4: DIAGNOSTICS & TELEMETRY HISTORY
+            // ===============================================================
+            _buildSectionHeader(
+              '4. SENSOR DIAGNOSTICS & HISTORY',
+              'Raw ADC, battery estimate, polling interval, and 30-sample sparkline',
+              Icons.analytics_outlined,
+              Colors.blueGrey,
+            ),
+            _buildSensorDiagnosticsAccordion(statusColor),
+            const SizedBox(height: 28),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   /// Collapsible Sensor History & Diagnostics at the bottom of Plant & Care tab
   Widget _buildSensorDiagnosticsAccordion(Color statusColor) {
@@ -2953,12 +3308,17 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
                   'Raw Sensor ADC',
                   style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : kTextSecondary),
                 ),
-                Text(
-                  '$_rawAdc (Range: 1100 wet - 3100 dry)',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? kDarkTextPrimary : kTextPrimary,
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    '$_rawAdc (Range: 1100–3100)',
+                    textAlign: TextAlign.end,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? kDarkTextPrimary : kTextPrimary,
+                    ),
                   ),
                 ),
               ],
@@ -3811,7 +4171,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   Color _getMoistureColor(int moisture, [Plant? plant]) {
     final p = plant ?? _plantService.getPlantForDevice(widget.device.id);
     final tCrit = p?.criticalMinMoisture ?? 15;
-    final tOptMin = p?.optimalMinMoisture ?? 28;
+    final tOptMin = p?.optimalMinMoisture ?? 20;
     final tOptMax = p?.optimalMaxMoisture ?? 65;
     final tMax = p?.overwaterMaxMoisture ?? 78;
 
@@ -3825,7 +4185,7 @@ class _IotDetailsScreenState extends State<IotDetailsScreen>
   String _getMoistureStatusLabel(int moisture, [Plant? plant]) {
     final p = plant ?? _plantService.getPlantForDevice(widget.device.id);
     final tCrit = p?.criticalMinMoisture ?? 15;
-    final tOptMin = p?.optimalMinMoisture ?? 28;
+    final tOptMin = p?.optimalMinMoisture ?? 20;
     final tOptMax = p?.optimalMaxMoisture ?? 65;
     final tMax = p?.overwaterMaxMoisture ?? 78;
     final isRainExpected = (p == null || p.isOutdoor) && (_weatherData?.isRainGuardActive == true);
@@ -3888,6 +4248,7 @@ class _SparklinePainter extends CustomPainter {
 class _SmartHydrateModal extends StatefulWidget {
   final IotDevice device;
   final Plant? plant;
+  final WeatherData? weatherData;
   final int currentMoisture;
   final IotFirestoreService firestoreService;
   final ValueChanged<int> onMoistureUpdated;
@@ -3895,6 +4256,7 @@ class _SmartHydrateModal extends StatefulWidget {
   const _SmartHydrateModal({
     required this.device,
     required this.plant,
+    this.weatherData,
     required this.currentMoisture,
     required this.firestoreService,
     required this.onMoistureUpdated,
@@ -3923,18 +4285,20 @@ class _SmartHydrateModalState extends State<_SmartHydrateModal> {
   void initState() {
     super.initState();
     _moisture = widget.currentMoisture;
-    _targetMoisture = widget.plant?.optimalMaxMoisture ?? 65;
+    _targetMoisture = widget.device.calculateDynamicTargetMoisture(widget.weatherData);
     _optMinMoisture = widget.plant?.optimalMinMoisture ?? 30;
     _critMinMoisture = widget.plant?.criticalMinMoisture ?? 15;
     _overwaterMax = widget.plant?.overwaterMaxMoisture ?? 78;
 
+    final explanation = widget.device.getDynamicWateringExplanation(widget.weatherData);
+
     if (_moisture >= _targetMoisture) {
       _phase = 'already_optimal';
       _statusMessage =
-          'Soil moisture is currently at $_moisture%, which satisfies or exceeds the optimal target ($_targetMoisture%). Additional watering is not needed to prevent root saturation.';
+          'Soil moisture is currently at $_moisture%, which satisfies or exceeds the dynamic target ($_targetMoisture%).\n\n$explanation';
     } else {
       _statusMessage =
-          'Soil moisture is at $_moisture% (Optimal target is $_targetMoisture%). Water will be applied using the Pulse-and-Soak protocol: 3-second gentle pulses followed by a 10-second soak window.';
+          'Soil moisture is at $_moisture% (Dynamic target: $_targetMoisture%).\n\n$explanation\n\nWater will be applied using the Pulse-and-Soak protocol: 3-second gentle pulses followed by a 10-second soak window.';
     }
   }
 
@@ -4007,7 +4371,7 @@ class _SmartHydrateModalState extends State<_SmartHydrateModal> {
     // Refresh telemetry from Firestore
     final updatedDev = await widget.firestoreService.getDevice(widget.device.id);
     if (updatedDev?.moistureLevel != null) {
-      final newM = (updatedDev!.moistureLevel! * 100).round();
+      final newM = updatedDev!.moisturePercentInt;
       setState(() {
         _moisture = newM;
       });
@@ -4079,6 +4443,7 @@ class _SmartHydrateModalState extends State<_SmartHydrateModal> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final plantName = widget.plant?.name ?? widget.device.name;
     final species = widget.plant?.species ?? 'Botanical Specimen';
+    final bool isIndoor = widget.plant?.isIndoor ?? widget.device.isIndoor;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -4146,7 +4511,48 @@ class _SmartHydrateModalState extends State<_SmartHydrateModal> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+
+            // Dynamic Target & Environment Intelligence Badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: isIndoor
+                    ? (isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.3) : const Color(0xFFEFF6FF))
+                    : (isDark ? const Color(0xFF064E3B).withValues(alpha: 0.3) : const Color(0xFFF0FDF4)),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isIndoor
+                      ? const Color(0xFF3B82F6).withValues(alpha: 0.4)
+                      : const Color(0xFF10B981).withValues(alpha: 0.4),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isIndoor ? Icons.home_rounded : Icons.park_rounded,
+                    size: 16,
+                    color: isIndoor ? const Color(0xFF2563EB) : const Color(0xFF059669),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isIndoor
+                          ? 'Sheltered Indoor Specimen • Target: 65% Fixed'
+                          : 'Outdoor Specimen • Target: $_targetMoisture% Weather-Adaptive',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: isIndoor
+                            ? (isDark ? const Color(0xFF93C5FD) : const Color(0xFF1D4ED8))
+                            : (isDark ? const Color(0xFF6EE7B7) : const Color(0xFF065F46)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
 
             // Moisture Comparison & Range Gauge
             Container(

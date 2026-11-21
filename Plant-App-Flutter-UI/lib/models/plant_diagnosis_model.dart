@@ -20,6 +20,14 @@ class PlantDiagnosisResponse {
   final FoliarHoleAnalysis holeAnalysis;
   final bool hasMacroDetail;
   final String? macroImageBase64;
+  final String imageQualityStatus;
+  final int pdiGrade;
+  final String overallHealthTier;
+  final double affectedAreaPercent;
+  final bool needsUserSoilCheck;
+  final List<SymptomDetection> detections;
+  final bool needsUserConfirmation;
+  final List<SpeciesCandidate> topCandidates;
 
   PlantDiagnosisResponse({
     required this.status,
@@ -37,6 +45,14 @@ class PlantDiagnosisResponse {
     this.preprocessedImageBase64,
     this.hasMacroDetail = false,
     this.macroImageBase64,
+    this.imageQualityStatus = 'PASS',
+    this.pdiGrade = 0,
+    this.overallHealthTier = 'Optimal',
+    this.affectedAreaPercent = 0.0,
+    this.needsUserSoilCheck = false,
+    this.detections = const [],
+    this.needsUserConfirmation = false,
+    this.topCandidates = const [],
     MultiCategoryDiagnosis? multiCategory,
     List<RuledOutCondition>? ruledOutConditions,
     List<DiagnosticClarifierQuestion>? clarifierQuestions,
@@ -147,6 +163,24 @@ class PlantDiagnosisResponse {
           holeAnalysis: holeAnalysis,
         );
 
+    final detections = (json['detections'] as List<dynamic>?)
+            ?.map((e) => SymptomDetection.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [];
+    final imageQualityStatus = json['image_quality_status']?.toString() ?? 'PASS';
+    final pdiGrade = (json['pdi_grade'] as num?)?.toInt() ?? (pdiRating?.grade ?? 0);
+    final overallHealthTier = json['overall_health_tier']?.toString() ?? (diagnosis.isHealthy ? 'Optimal' : diagnosis.severity);
+    final affectedAreaPercent = (json['affected_area_percent'] as num?)?.toDouble() ?? (spots.infectedAreaPct);
+    final needsUserSoilCheck = json['needs_user_soil_check'] as bool? ?? false;
+    final rawTopCands = (json['top_candidates'] as List<dynamic>?) ??
+        (json['species'] is Map ? (json['species']['top_candidates'] as List<dynamic>?) : null);
+    final topCandidates = rawTopCands
+            ?.map((e) => SpeciesCandidate.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        species.topCandidates;
+    final needsUserConfirmation = (json['needs_user_confirmation'] as bool?) ??
+        (species.confidence > 0 && species.confidence < 0.85);
+
     return PlantDiagnosisResponse(
       status: json['status']?.toString() ?? '',
       isPlant: json['is_plant'] as bool? ?? true,
@@ -167,6 +201,14 @@ class PlantDiagnosisResponse {
       clarifierQuestions: clarifierQuestions,
       hasMacroDetail: json['has_macro_detail'] as bool? ?? (json['macro_image_base64'] != null),
       macroImageBase64: json['macro_image_base64']?.toString(),
+      imageQualityStatus: imageQualityStatus,
+      pdiGrade: pdiGrade,
+      overallHealthTier: overallHealthTier,
+      affectedAreaPercent: affectedAreaPercent,
+      needsUserSoilCheck: needsUserSoilCheck,
+      detections: detections,
+      needsUserConfirmation: needsUserConfirmation,
+      topCandidates: topCandidates,
     );
   }
 
@@ -591,18 +633,119 @@ class PlantDiagnosisResponse {
   }
 }
 
+class SpeciesVisualPriors {
+  final bool isVariegated;
+  final bool isFenestrated;
+  final bool isGlossy;
+  final bool isSucculent;
+
+  SpeciesVisualPriors({
+    this.isVariegated = false,
+    this.isFenestrated = false,
+    this.isGlossy = false,
+    this.isSucculent = false,
+  });
+
+  factory SpeciesVisualPriors.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return SpeciesVisualPriors();
+    return SpeciesVisualPriors(
+      isVariegated: json['is_variegated'] as bool? ?? false,
+      isFenestrated: json['is_fenestrated'] as bool? ?? false,
+      isGlossy: json['is_glossy'] as bool? ?? false,
+      isSucculent: json['is_succulent'] as bool? ?? false,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'is_variegated': isVariegated,
+    'is_fenestrated': isFenestrated,
+    'is_glossy': isGlossy,
+    'is_succulent': isSucculent,
+  };
+}
+
+class SymptomDetection {
+  final String class_;
+  final String displayLabel;
+  final double confidence;
+  final String confidenceTier;
+  final List<int> bbox;
+  final List<String> probableCauses;
+  final String recommendedCheck;
+  final String source;
+
+  SymptomDetection({
+    required this.class_,
+    required this.displayLabel,
+    required this.confidence,
+    required this.confidenceTier,
+    required this.bbox,
+    required this.probableCauses,
+    required this.recommendedCheck,
+    this.source = 'yolo',
+  });
+
+  factory SymptomDetection.fromJson(Map<String, dynamic> json) {
+    return SymptomDetection(
+      class_: json['class']?.toString() ?? '',
+      displayLabel: json['display_label']?.toString() ?? '',
+      confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
+      confidenceTier: json['confidence_tier']?.toString() ?? 'borderline',
+      bbox: (json['bbox'] as List<dynamic>?)?.map((e) => (e as num).toInt()).toList() ?? [],
+      probableCauses: (json['probable_causes'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      recommendedCheck: json['recommended_check']?.toString() ?? '',
+      source: json['source']?.toString() ?? 'yolo',
+    );
+  }
+
+  SymptomDetection copyWith({
+    String? class_,
+    String? displayLabel,
+    double? confidence,
+    String? confidenceTier,
+    List<int>? bbox,
+    List<String>? probableCauses,
+    String? recommendedCheck,
+    String? source,
+  }) {
+    return SymptomDetection(
+      class_: class_ ?? this.class_,
+      displayLabel: displayLabel ?? this.displayLabel,
+      confidence: confidence ?? this.confidence,
+      confidenceTier: confidenceTier ?? this.confidenceTier,
+      bbox: bbox ?? this.bbox,
+      probableCauses: probableCauses ?? this.probableCauses,
+      recommendedCheck: recommendedCheck ?? this.recommendedCheck,
+      source: source ?? this.source,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'class': class_,
+    'display_label': displayLabel,
+    'confidence': confidence,
+    'confidence_tier': confidenceTier,
+    'bbox': bbox,
+    'probable_causes': probableCauses,
+    'recommended_check': recommendedCheck,
+    'source': source,
+  };
+}
+
 class SpeciesInfo {
   final String name;
   final double confidence;
   final String detectedMode;
   final List<SpeciesCandidate> topCandidates;
+  final SpeciesVisualPriors visualPriors;
 
   SpeciesInfo({
     required this.name,
     required this.confidence,
     required this.detectedMode,
     required this.topCandidates,
-  });
+    SpeciesVisualPriors? visualPriors,
+  }) : visualPriors = visualPriors ?? SpeciesVisualPriors();
 
   factory SpeciesInfo.fromJson(Map<String, dynamic> json) {
     return SpeciesInfo(
@@ -613,20 +756,44 @@ class SpeciesInfo {
               ?.map((e) => SpeciesCandidate.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      visualPriors: SpeciesVisualPriors.fromJson(json['visual_priors'] as Map<String, dynamic>?),
     );
   }
 }
 
 class SpeciesCandidate {
   final String species;
+  final String speciesName;
+  final String genus;
+  final String family;
+  final String displayName;
   final double confidence;
+  final SpeciesVisualPriors visualPriors;
 
-  SpeciesCandidate({required this.species, required this.confidence});
+  SpeciesCandidate({
+    required this.species,
+    this.speciesName = '',
+    this.genus = '',
+    this.family = '',
+    this.displayName = '',
+    required this.confidence,
+    SpeciesVisualPriors? visualPriors,
+  }) : visualPriors = visualPriors ?? SpeciesVisualPriors();
 
   factory SpeciesCandidate.fromJson(Map<String, dynamic> json) {
+    final spec = json['species_name']?.toString() ?? json['species']?.toString() ?? '';
+    final gen = json['genus']?.toString() ?? '';
+    final fam = json['family']?.toString() ?? '';
+    final disp = json['display_name']?.toString() ?? spec;
+    final conf = (json['confidence'] as num?)?.toDouble() ?? 0.0;
     return SpeciesCandidate(
-      species: json['species']?.toString() ?? '',
-      confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
+      species: spec,
+      speciesName: spec,
+      genus: gen,
+      family: fam,
+      displayName: disp,
+      confidence: conf,
+      visualPriors: SpeciesVisualPriors.fromJson(json['visual_priors'] as Map<String, dynamic>?),
     );
   }
 }
@@ -917,6 +1084,13 @@ class MultiCategoryDiagnosis {
         orElse: () => microorganism,
       );
 
+  factory MultiCategoryDiagnosis.healthyClear() => MultiCategoryDiagnosis(
+        microorganism: CategoryDiagnosisItem.clearMicroorganism(),
+        pestInsect: CategoryDiagnosisItem.clearPestInsect(),
+        rust: CategoryDiagnosisItem.clearRust(),
+        watering: CategoryDiagnosisItem.clearWatering(),
+      );
+
   factory MultiCategoryDiagnosis.fromJson(
     Map<String, dynamic>? json, {
     required DiagnosisInfo diagnosis,
@@ -928,6 +1102,11 @@ class MultiCategoryDiagnosis {
     required List<PredictionItem> predictions,
     required AbioticInfo? abiotic,
   }) {
+    // Top-level priority: If primary diagnosis is explicitly healthy, return all-clear scorecard
+    if (diagnosis.isHealthy || diagnosis.conditionName.toLowerCase().contains('healthy')) {
+      return MultiCategoryDiagnosis.healthyClear();
+    }
+
     if (json != null &&
         json['microorganism'] is Map<String, dynamic> &&
         json['pest_insect'] is Map<String, dynamic> &&
@@ -965,8 +1144,57 @@ class MultiCategoryDiagnosis {
   }) {
     final condLower = diagnosis.conditionName.toLowerCase();
     final catLower = diagnosis.category.toLowerCase();
-    final allPredsLower = predictions.map((p) => '${p.className.toLowerCase()} ${p.conditionName.toLowerCase()}').join(' ');
-    final alertTextLower = coAlerts.map((a) => '${a.type.toLowerCase()} ${a.badge.toLowerCase()} ${a.message.toLowerCase()}').join(' ');
+    final sNameLower = '${species.name} ${species.detectedMode}'.toLowerCase();
+    final isExplicitlyHealthy = diagnosis.isHealthy || condLower.contains('healthy');
+
+    if (isExplicitlyHealthy) {
+      return MultiCategoryDiagnosis.healthyClear();
+    }
+
+    // Botanical Prior: Taxa with natural red/pink/anthocyanin pigmentation or immune to rust
+    final isNaturallyVariegated = sNameLower.contains('chinese evergreen') ||
+        sNameLower.contains('aglaonema') ||
+        sNameLower.contains('caladium') ||
+        sNameLower.contains('coleus') ||
+        sNameLower.contains('fittonia') ||
+        sNameLower.contains('begonia') ||
+        sNameLower.contains('croton') ||
+        sNameLower.contains('hypoestes');
+
+    final isRustImmune = isNaturallyVariegated ||
+        sNameLower.contains('araceae') ||
+        sNameLower.contains('monstera') ||
+        sNameLower.contains('pothos') ||
+        sNameLower.contains('philodendron') ||
+        sNameLower.contains('alocasia') ||
+        sNameLower.contains('anthurium') ||
+        sNameLower.contains('spathiphyllum') ||
+        sNameLower.contains('peace lily') ||
+        sNameLower.contains('dieffenbachia') ||
+        sNameLower.contains('zz plant') ||
+        sNameLower.contains('zamioculcas') ||
+        sNameLower.contains('orchid') ||
+        sNameLower.contains('fern') ||
+        sNameLower.contains('cactus') ||
+        sNameLower.contains('cacti') ||
+        sNameLower.contains('succulent') ||
+        sNameLower.contains('kalanchoe') ||
+        sNameLower.contains('palm') ||
+        sNameLower.contains('areca') ||
+        sNameLower.contains('rhapis') ||
+        sNameLower.contains('ficus') ||
+        sNameLower.contains('rubber') ||
+        sNameLower.contains('calathea') ||
+        sNameLower.contains('maranta') ||
+        sNameLower.contains('peperomia') ||
+        sNameLower.contains('pilea') ||
+        sNameLower.contains('pennywort') ||
+        sNameLower.contains('sansevieria') ||
+        sNameLower.contains('snake plant') ||
+        sNameLower.contains('dracaena');
+
+    final topPredName = predictions.isNotEmpty ? predictions.first.conditionName.toLowerCase() : '';
+    final topPredClass = predictions.isNotEmpty ? predictions.first.className.toLowerCase() : '';
 
     // -------------------------------------------------------------------------
     // CATEGORY 1 (RANK 1 - CRITICAL SEVERITY): MICROORGANISM INFESTATION
@@ -983,12 +1211,12 @@ class MultiCategoryDiagnosis {
         condLower.contains('mosaic') ||
         catLower.contains('bacterial') ||
         catLower.contains('fungal') ||
-        allPredsLower.contains('bacterial') ||
-        allPredsLower.contains('anthracnose');
+        topPredName.contains('bacterial') ||
+        topPredName.contains('anthracnose');
 
     final isMicrobialDetected = hasMicroorganism &&
-        !condLower.contains('healthy') &&
-        (!condLower.contains('rust') || condLower.contains('spot') || condLower.contains('bacterial'));
+        !isExplicitlyHealthy &&
+        (!condLower.contains('rust') || condLower.contains('spot') || condLower.contains('bacterial') || condLower.contains('anthracnose'));
 
     final CategoryDiagnosisItem microItem;
     if (isMicrobialDetected) {
@@ -1045,76 +1273,37 @@ class MultiCategoryDiagnosis {
         badges: ['High Contagion', 'Vascular Pathogen', 'Immediate Quarantine'],
       );
     } else {
-      microItem = CategoryDiagnosisItem(
-        id: 'microorganism',
-        title: 'Microorganism Infestation',
-        severityRank: 1,
-        severityRankLabel: 'Rank 1 • Critical Severity',
-        severityLevel: 'Optimal',
-        isDetected: false,
-        statusLabel: 'Clear • No Microbial Pathogens',
-        confidence: 96.5,
-        summary: 'No active bacterial leaf spot, fungal blights, soft rot, powdery mildew mycelium, or viral lesions identified on foliar surfaces.',
-        symptoms: [
-          'Uniform leaf lamina with intact cuticle wax barrier.',
-          'No water-soaked margins, target rings, or bacterial ooze.',
-        ],
-        immediateActions: [
-          'Maintain clean foliage and keep leaves dry during watering.',
-        ],
-        organicTreatments: [
-          'Routine preventive foliar wiping with a clean damp microfiber cloth.',
-        ],
-        chemicalTreatments: [
-          'No chemical bactericides or fungicides needed.',
-        ],
-        prevention: [
-          'Water strictly at soil level and ensure adequate room ventilation.',
-        ],
-        badges: ['Clean Epidermis', 'Pathogen-Free'],
-      );
+      microItem = CategoryDiagnosisItem.clearMicroorganism();
     }
 
     // -------------------------------------------------------------------------
     // CATEGORY 2 (RANK 2 - HIGH URGENCY): PEST / INSECT INFESTATION
     // -------------------------------------------------------------------------
-    final hasPest = condLower.contains('pest') ||
-        condLower.contains('insect') ||
-        condLower.contains('aphid') ||
-        condLower.contains('mealybug') ||
-        condLower.contains('scale') ||
-        condLower.contains('thrip') ||
-        condLower.contains('mite') ||
-        condLower.contains('whitefl') ||
-        condLower.contains('miner') ||
-        condLower.contains('chew') ||
-        condLower.contains('bite') ||
-        condLower.contains('hole') ||
-        alertTextLower.contains('pest') ||
-        alertTextLower.contains('aphid') ||
-        alertTextLower.contains('mite') ||
-        alertTextLower.contains('scale') ||
-        alertTextLower.contains('bite') ||
-        (abiotic?.isPest == true);
+    final pestKws = ['pest', 'insect', 'aphid', 'mealybug', 'scale', 'thrip', 'mite', 'whitefl', 'miner', 'caterpillar', 'chewing', 'bug bite'];
+    final isPestInCond = pestKws.any((k) => condLower.contains(k));
+    final isPestInTopPred = pestKws.any((k) =>
+        topPredName.contains(k) ||
+        topPredClass.contains(k));
+    final isPestInAbiotic = abiotic?.isPest == true;
 
-    final isPestDetected = hasPest && !condLower.contains('healthy');
+    final isPestDetected = !isExplicitlyHealthy && (isPestInCond || isPestInTopPred || isPestInAbiotic);
 
     final CategoryDiagnosisItem pestItem;
     if (isPestDetected) {
       String pestName = 'Biotic Pest Infestation';
-      if (condLower.contains('mealybug')) {
+      if (condLower.contains('mealybug') || topPredName.contains('mealybug')) {
         pestName = 'Mealybugs (Cochineal Wax)';
-      } else if (condLower.contains('aphid')) {
+      } else if (condLower.contains('aphid') || topPredName.contains('aphid')) {
         pestName = 'Aphids (Plant Lice Colony)';
-      } else if (condLower.contains('scale')) {
+      } else if (condLower.contains('scale') || topPredName.contains('scale')) {
         pestName = 'Scale Insects (Armored Shell)';
-      } else if (condLower.contains('mite')) {
+      } else if (condLower.contains('mite') || topPredName.contains('mite')) {
         pestName = 'Spider Mites (Tetranychidae)';
-      } else if (condLower.contains('thrip')) {
+      } else if (condLower.contains('thrip') || topPredName.contains('thrip')) {
         pestName = 'Thrips (Foliar Rasping)';
-      } else if (condLower.contains('miner')) {
+      } else if (condLower.contains('miner') || topPredName.contains('miner')) {
         pestName = 'Leaf Miners (Mesophyll Tunnels)';
-      } else if (condLower.contains('chew') || condLower.contains('bite')) {
+      } else if (condLower.contains('chew') || condLower.contains('bite') || topPredName.contains('chew') || topPredName.contains('bite')) {
         pestName = 'Chewing Pests (Insect Bite Holes)';
       }
 
@@ -1158,44 +1347,17 @@ class MultiCategoryDiagnosis {
         badges: ['Sap Sucker', 'Spreads Across Plants', 'Isolation Required'],
       );
     } else {
-      pestItem = CategoryDiagnosisItem(
-        id: 'pest_insect',
-        title: 'Pest & Insect Infestation',
-        severityRank: 2,
-        severityRankLabel: 'Rank 2 • High Urgency',
-        severityLevel: 'Optimal',
-        isDetected: false,
-        statusLabel: 'Clear • No Active Pests',
-        confidence: 95.0,
-        summary: 'No sap-sucking insects, webbing, scale armor shells, mealybug wax clusters, or chewing bite perforations detected on foliage.',
-        symptoms: [
-          'Intact leaf margins and unblemished foliar surfaces.',
-          'No sticky honeydew, webbing, or crawling nymphs observed.',
-        ],
-        immediateActions: [
-          'Continue routine weekly visual checks of leaf undersides.',
-        ],
-        organicTreatments: [
-          'Preventive foliage wipe with clean damp cloth once a month.',
-        ],
-        chemicalTreatments: [
-          'No chemical insecticides needed.',
-        ],
-        prevention: [
-          'Maintain balanced ambient humidity to discourage spider mite reproduction.',
-        ],
-        badges: ['Pest-Free', 'Optimal Vigor'],
-      );
+      pestItem = CategoryDiagnosisItem.clearPestInsect();
     }
 
     // -------------------------------------------------------------------------
     // CATEGORY 3 (RANK 3 - MODERATE SEVERITY): RUST FUNGAL INFECTION
     // -------------------------------------------------------------------------
-    final hasRust = condLower.contains('rust') ||
-        allPredsLower.contains('rust') ||
-        alertTextLower.contains('rust');
+    final isRustPrimary = condLower.contains('rust') ||
+        topPredName.contains('rust') ||
+        topPredClass.contains('rust');
 
-    final isRustDetected = hasRust && !condLower.contains('healthy');
+    final isRustDetected = isRustPrimary && !isExplicitlyHealthy && !isRustImmune;
 
     final CategoryDiagnosisItem rustItem;
     if (isRustDetected) {
@@ -1236,54 +1398,30 @@ class MultiCategoryDiagnosis {
         badges: ['Spore Producing', 'Foliar Pustules', 'Pruning Required'],
       );
     } else {
-      rustItem = CategoryDiagnosisItem(
-        id: 'rust',
-        title: 'Rust Fungal Infection',
-        severityRank: 3,
-        severityRankLabel: 'Rank 3 • Moderate Severity',
-        severityLevel: 'Optimal',
-        isDetected: false,
-        statusLabel: 'Clear • No Rust Pustules',
-        confidence: 98.0,
-        summary: 'No orange, cinnamon, or brown Pucciniales spore pustules, uredinia clusters, or localized rust chlorosis detected.',
-        symptoms: [
-          'Clean foliar undersides with smooth texture and uniform pigmentation.',
-          'No powdery spore dust or chlorotic spore flecking.',
-        ],
-        immediateActions: [
-          'Keep foliar canopy dry to maintain high resistance against fungal spores.',
-        ],
-        organicTreatments: [
-          'No fungicidal treatments required.',
-        ],
-        chemicalTreatments: [
-          'No chemical fungicides needed.',
-        ],
-        prevention: [
-          'Avoid overhead spraying; ensure continuous gentle room airflow.',
-        ],
-        badges: ['Pustule-Free', 'Zero Spores'],
-      );
+      rustItem = CategoryDiagnosisItem.clearRust();
     }
 
     // -------------------------------------------------------------------------
     // CATEGORY 4 (RANK 4 - MANAGEABLE HYDRATION): UNDER / OVERWATERING
     // -------------------------------------------------------------------------
-    final isUnder = (abiotic?.isUnderwatered == true) ||
+    final stype = abiotic?.stressType.toLowerCase() ?? '';
+    final isUnder = !isExplicitlyHealthy && (
+        (abiotic?.isUnderwatered == true && ((abiotic?.necrosisScore ?? 0) >= 3.0 || abiotic?.stressLevel == 'High' || abiotic?.stressLevel == 'Moderate')) ||
         condLower.contains('underwater') ||
         condLower.contains('dehydrat') ||
         condLower.contains('desiccat') ||
-        (abiotic?.stressType.toLowerCase().contains('underwater') ?? false) ||
-        (abiotic?.stressType.toLowerCase().contains('dehydrat') ?? false) ||
-        (abiotic?.waterStatus.toLowerCase().contains('underwater') ?? false);
+        stype.contains('underwater') ||
+        stype.contains('dehydrat')
+    );
 
-    final isOver = (abiotic?.isOverwatered == true) ||
+    final isOver = !isExplicitlyHealthy && !isUnder && (
+        (abiotic?.isOverwatered == true) ||
         condLower.contains('overwater') ||
         condLower.contains('waterlog') ||
         condLower.contains('edema') ||
-        (abiotic?.stressType.toLowerCase().contains('overwater') ?? false) ||
-        (abiotic?.stressType.toLowerCase().contains('waterlog') ?? false) ||
-        (abiotic?.waterStatus.toLowerCase().contains('overwater') ?? false);
+        stype.contains('overwater') ||
+        stype.contains('waterlog')
+    );
 
     final CategoryDiagnosisItem waterItem;
     if (isUnder) {
@@ -1363,34 +1501,7 @@ class MultiCategoryDiagnosis {
         badges: ['Root Hypoxia', 'Substrate Saturated', 'Aeration Needed'],
       );
     } else {
-      waterItem = CategoryDiagnosisItem(
-        id: 'watering',
-        title: 'Under / Overwatering Balance',
-        severityRank: 4,
-        severityRankLabel: 'Rank 4 • Physiological / Manageable',
-        severityLevel: 'Optimal',
-        isDetected: false,
-        statusLabel: 'Optimal • Balanced Soil Hydration',
-        confidence: 94.5,
-        summary: 'Foliage demonstrates ideal cellular turgidity and water balance. No symptoms of drought wilting, desiccation, or waterlogged edema detected.',
-        symptoms: [
-          'Firm, upright leaf blades with natural spring and vibrant luster.',
-          'Healthy foliar hydration without crispy tips or translucent water-soaked spots.',
-        ],
-        immediateActions: [
-          'Maintain current watering schedule; check soil dryness or IoT probe before next watering.',
-        ],
-        organicTreatments: [
-          'Routine balanced organic liquid kelp fertilizer during active growing phase.',
-        ],
-        chemicalTreatments: [
-          'None needed.',
-        ],
-        prevention: [
-          'Adhere to recommended species moisture threshold and monitor with IoT probe.',
-        ],
-        badges: ['Optimal Turgor', 'Hydration Equilibrium'],
-      );
+      waterItem = CategoryDiagnosisItem.clearWatering();
     }
 
     return MultiCategoryDiagnosis(
@@ -1437,6 +1548,122 @@ class CategoryDiagnosisItem {
     this.prevention = const [],
     this.badges = const [],
   });
+
+  factory CategoryDiagnosisItem.clearMicroorganism() => CategoryDiagnosisItem(
+        id: 'microorganism',
+        title: 'Microorganism Infestation',
+        severityRank: 1,
+        severityRankLabel: 'Rank 1 • Critical Severity',
+        severityLevel: 'Optimal',
+        isDetected: false,
+        statusLabel: 'Clear • No Microbial Pathogens',
+        confidence: 96.5,
+        summary: 'No active bacterial leaf spot, fungal blights, soft rot, powdery mildew mycelium, or viral lesions identified on foliar surfaces.',
+        symptoms: const [
+          'Uniform leaf lamina with intact cuticle wax barrier.',
+          'No water-soaked margins, target rings, or bacterial ooze.',
+        ],
+        immediateActions: const [
+          'Maintain clean foliage and keep leaves dry during watering.',
+        ],
+        organicTreatments: const [
+          'Routine preventive foliar wiping with a clean damp microfiber cloth.',
+        ],
+        chemicalTreatments: const [
+          'No chemical bactericides or fungicides needed.',
+        ],
+        prevention: const [
+          'Water strictly at soil level and ensure adequate room ventilation.',
+        ],
+        badges: const ['Clean Epidermis', 'Pathogen-Free'],
+      );
+
+  factory CategoryDiagnosisItem.clearPestInsect() => CategoryDiagnosisItem(
+        id: 'pest_insect',
+        title: 'Pest & Insect Infestation',
+        severityRank: 2,
+        severityRankLabel: 'Rank 2 • High Urgency',
+        severityLevel: 'Optimal',
+        isDetected: false,
+        statusLabel: 'Clear • No Active Pests',
+        confidence: 95.0,
+        summary: 'No sap-sucking insects, webbing, scale armor shells, mealybug wax clusters, or chewing bite perforations detected on foliage.',
+        symptoms: const [
+          'Intact leaf margins and unblemished foliar surfaces.',
+          'No sticky honeydew, webbing, or crawling nymphs observed.',
+        ],
+        immediateActions: const [
+          'Continue routine weekly visual checks of leaf undersides.',
+        ],
+        organicTreatments: const [
+          'Preventive foliage wipe with clean damp cloth once a month.',
+        ],
+        chemicalTreatments: const [
+          'No chemical insecticides needed.',
+        ],
+        prevention: const [
+          'Maintain balanced ambient humidity to discourage spider mite reproduction.',
+        ],
+        badges: const ['Pest-Free', 'Optimal Vigor'],
+      );
+
+  factory CategoryDiagnosisItem.clearRust() => CategoryDiagnosisItem(
+        id: 'rust',
+        title: 'Rust Fungal Infection',
+        severityRank: 3,
+        severityRankLabel: 'Rank 3 • Moderate Severity',
+        severityLevel: 'Optimal',
+        isDetected: false,
+        statusLabel: 'Clear • No Rust Pustules',
+        confidence: 98.0,
+        summary: 'No orange, cinnamon, or brown Pucciniales spore pustules, uredinia clusters, or localized rust chlorosis detected.',
+        symptoms: const [
+          'Clean foliar undersides with smooth texture and uniform pigmentation.',
+          'No powdery spore dust or chlorotic spore flecking.',
+        ],
+        immediateActions: const [
+          'Keep foliar canopy dry to maintain high resistance against fungal spores.',
+        ],
+        organicTreatments: const [
+          'No fungicidal treatments required.',
+        ],
+        chemicalTreatments: const [
+          'No chemical fungicides needed.',
+        ],
+        prevention: const [
+          'Avoid overhead spraying; ensure continuous gentle room airflow.',
+        ],
+        badges: const ['Pustule-Free', 'Zero Spores'],
+      );
+
+  factory CategoryDiagnosisItem.clearWatering() => CategoryDiagnosisItem(
+        id: 'watering',
+        title: 'Under / Overwatering Balance',
+        severityRank: 4,
+        severityRankLabel: 'Rank 4 • Physiological / Manageable',
+        severityLevel: 'Optimal',
+        isDetected: false,
+        statusLabel: 'Optimal • Balanced Soil Hydration',
+        confidence: 94.5,
+        summary: 'Foliage demonstrates ideal cellular turgidity and water balance. No symptoms of drought wilting, desiccation, or waterlogged edema detected.',
+        symptoms: const [
+          'Firm, upright leaf blades with natural spring and vibrant luster.',
+          'Healthy foliar hydration without crispy tips or translucent water-soaked spots.',
+        ],
+        immediateActions: const [
+          'Maintain current watering schedule; check soil dryness or IoT probe before next watering.',
+        ],
+        organicTreatments: const [
+          'Routine balanced organic liquid kelp fertilizer during active growing phase.',
+        ],
+        chemicalTreatments: const [
+          'None needed.',
+        ],
+        prevention: const [
+          'Adhere to recommended species moisture threshold and monitor with IoT probe.',
+        ],
+        badges: const ['Optimal Turgor', 'Hydration Equilibrium'],
+      );
 
   factory CategoryDiagnosisItem.fromJson(Map<String, dynamic> json) {
     return CategoryDiagnosisItem(

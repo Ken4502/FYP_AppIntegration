@@ -198,16 +198,22 @@ class _PlantHealthReportScreenState extends State<PlantHealthReportScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.sensors, size: 18, color: kPrimaryColor),
-                            SizedBox(width: 6),
-                            Text(
-                              'IoT Monitored Specimens',
-                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: kTextPrimary),
-                            ),
-                          ],
+                        const Expanded(
+                          child: Row(
+                            children: [
+                              Icon(Icons.sensors, size: 18, color: kPrimaryColor),
+                              SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  'IoT Monitored Specimens',
+                                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: kTextPrimary),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+                        const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
@@ -238,12 +244,16 @@ class _PlantHealthReportScreenState extends State<PlantHealthReportScreen> {
                           children: [
                             Icon(Icons.schedule_rounded, size: 18, color: Colors.blueGrey.shade700),
                             const SizedBox(width: 6),
-                            const Text(
-                              'Botanical Schedules & Reminders',
-                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: kTextPrimary),
+                            const Expanded(
+                              child: Text(
+                                'Botanical Schedules & Reminders',
+                                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: kTextPrimary),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ],
                         ),
+                        const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
@@ -735,13 +745,21 @@ class _PlantHealthReportScreenState extends State<PlantHealthReportScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              title,
-              style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : Colors.grey.shade700, fontWeight: FontWeight.w500),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(fontSize: 12, color: isDark ? kDarkTextSecondary : Colors.grey.shade700, fontWeight: FontWeight.w500),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            Text(
-              valueText,
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: color),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                valueText,
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: color),
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+              ),
             ),
           ],
         ),

@@ -1016,7 +1016,7 @@ class IotHybridConnectivityService {
     }
 
     if (device.moistureLevel != null && !device.autoWaterEnabled) {
-      final int moisturePct = (device.moistureLevel! * 100).round();
+      final int moisturePct = device.moisturePercentInt;
       if (moisturePct < device.lowMoistureThreshold) {
         LowMoistureDecisionService().dispatchLowMoistureAlert(
           device: device,

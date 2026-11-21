@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:urbangreen/constants.dart';
@@ -7,6 +8,7 @@ import 'package:urbangreen/screens/garden/edit_plant_screen.dart';
 import 'package:urbangreen/screens/iot/iot_details_screen.dart';
 import 'package:urbangreen/screens/iot/iot_management_screen.dart';
 import 'package:urbangreen/services/care_log_service.dart';
+import 'package:urbangreen/services/iot_firestore_service.dart';
 import 'package:urbangreen/services/iot_hybrid_connectivity_service.dart';
 import 'package:urbangreen/services/plant_service.dart';
 
@@ -33,16 +35,38 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
   final PlantService _plantService = PlantService();
   final CareLogService _careLogService = CareLogService();
 
+  StreamSubscription<IotDevice?>? _deviceSub;
+  IotDevice? _liveDevice;
+
   @override
   void initState() {
     super.initState();
     _plant = widget.plant;
     _descriptionController = TextEditingController(text: _plant.description);
     _plantService.addListener(_onPlantServiceChanged);
+    _subscribeToLiveDevice();
+  }
+
+  void _subscribeToLiveDevice() {
+    _deviceSub?.cancel();
+    _deviceSub = null;
+    final devId = _plant.iotDeviceId;
+    if (devId != null && devId.isNotEmpty) {
+      _deviceSub = IotFirestoreService().streamDevice(devId).listen((dev) {
+        if (mounted) {
+          setState(() {
+            _liveDevice = dev;
+          });
+        }
+      });
+    } else {
+      _liveDevice = null;
+    }
   }
 
   @override
   void dispose() {
+    _deviceSub?.cancel();
     _descriptionController.dispose();
     _plantService.removeListener(_onPlantServiceChanged);
     super.dispose();
@@ -51,9 +75,13 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
   void _onPlantServiceChanged() {
     final updated = _plantService.getPlantById(_plant.id);
     if (updated != null && mounted) {
+      final wasIot = _plant.iotDeviceId;
       setState(() {
         _plant = updated;
       });
+      if (wasIot != updated.iotDeviceId) {
+        _subscribeToLiveDevice();
+      }
     }
   }
 
@@ -72,6 +100,34 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
       });
       _plantService.updatePlant(updatedPlant);
       widget.onUpdate(updatedPlant);
+      _subscribeToLiveDevice();
+    }
+  }
+
+  void _togglePlantEnvironment() async {
+    final nextEnv = _plant.isIndoor ? 'outdoor' : 'indoor';
+    final updatedPlant = _plant.copyWith(environment: nextEnv);
+    setState(() {
+      _plant = updatedPlant;
+    });
+    _plantService.updatePlant(updatedPlant);
+    widget.onUpdate(updatedPlant);
+    if (_plant.iotDeviceId != null && _plant.iotDeviceId!.isNotEmpty) {
+      await IotFirestoreService().updateDeviceEnvironment(
+        _plant.iotDeviceId!,
+        isIndoor: updatedPlant.isIndoor,
+      );
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(nextEnv == 'indoor'
+              ? '🏠 Switched ${_plant.name} to Indoor (Sheltered mode)'
+              : '🌿 Switched ${_plant.name} to Outdoor (Live microclimate & RainGuard active)'),
+          backgroundColor: kStatusSuccess,
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -179,21 +235,18 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
     final bool hasIot = _plant.hasIot;
 
     final IotDevice? linkedDevice = hasIot
-        ? _iotService.connectedIotDevices.firstWhere(
-            (d) => d.id == linkedDeviceId,
-            orElse: () => IotDevice(
-              id: linkedDeviceId!,
-              name: linkedDeviceId,
-              isWifiConnected: _iotService.isRealHardwareConnected,
-            ),
-          )
+        ? (_liveDevice ??
+            _iotService.connectedIotDevices.firstWhere(
+              (d) => d.id == linkedDeviceId,
+              orElse: () => IotDevice(
+                id: linkedDeviceId!,
+                name: linkedDeviceId,
+                isWifiConnected: _iotService.isRealHardwareConnected,
+              ),
+            ))
         : null;
 
-    final int moisturePct = (linkedDevice?.moistureLevel != null)
-        ? (linkedDevice!.moistureLevel! > 1.0
-            ? linkedDevice.moistureLevel!.toInt()
-            : (linkedDevice.moistureLevel! * 100).toInt())
-        : 0;
+    final int moisturePct = linkedDevice?.moisturePercentInt ?? 0;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -335,30 +388,40 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
                                 ],
                               ),
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: _plant.isIndoor ? const Color(0xFF1E3A8A) : const Color(0xFF14532D),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    _plant.isIndoor ? Icons.home_rounded : Icons.park_rounded,
-                                    size: 11,
-                                    color: Colors.white,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _plant.isIndoor ? 'Indoor' : 'Outdoor',
-                                    style: const TextStyle(
+                            InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: _togglePlantEnvironment,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _plant.isIndoor ? const Color(0xFF1E3A8A) : const Color(0xFF14532D),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _plant.isIndoor ? Icons.home_rounded : Icons.park_rounded,
+                                      size: 11,
                                       color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _plant.isIndoor ? 'Indoor' : 'Outdoor',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Icon(
+                                      Icons.swap_horiz_rounded,
+                                      size: 12,
+                                      color: Colors.white70,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ],
@@ -1071,16 +1134,22 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.access_time_rounded, size: 20, color: kPrimaryColor),
-                                const SizedBox(width: 10),
-                                Text(
-                                  selectedTime,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kTextPrimary),
-                                ),
-                              ],
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.access_time_rounded, size: 20, color: kPrimaryColor),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      selectedTime,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kTextPrimary),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
+                            const SizedBox(width: 8),
                             const Text('Change Time', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryColor)),
                           ],
                         ),
@@ -1486,6 +1555,12 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
                               deviceId: dev.id,
                             );
 
+                            setState(() {
+                              _plant = _plant.copyWith(iotDeviceId: dev.id);
+                            });
+                            widget.onUpdate(_plant);
+                            _subscribeToLiveDevice();
+
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
@@ -1526,6 +1601,12 @@ class PlantDetailScreenState extends State<PlantDetailScreen> {
             onPressed: () {
               Navigator.pop(dlgContext);
               _plantService.unassignDeviceFromPlant(_plant.id);
+              setState(() {
+                _plant = _plant.copyWith(clearIotDevice: true);
+                _liveDevice = null;
+              });
+              widget.onUpdate(_plant);
+              _subscribeToLiveDevice();
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(

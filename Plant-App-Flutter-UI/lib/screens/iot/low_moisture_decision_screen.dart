@@ -560,9 +560,28 @@ class _LowMoistureDecisionScreenState extends State<LowMoistureDecisionScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('0% (Bone Dry)', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
-                        Text('Threshold: ${_device.lowMoistureThreshold}%', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
-                        Text('100% (Saturated)', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+                        Flexible(
+                          child: Text(
+                            '0% (Bone Dry)',
+                            style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Text(
+                            'Threshold: ${_device.lowMoistureThreshold}%',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey.shade700),
+                          ),
+                        ),
+                        Flexible(
+                          child: Text(
+                            '100% (Saturated)',
+                            style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.end,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 14),

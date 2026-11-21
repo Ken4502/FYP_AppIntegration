@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
+import 'weather_service.dart';
 
 enum ProvisioningState {
   initial,
@@ -130,7 +131,7 @@ class IotProvisioningService {
       }
 
       // 2. Deliver credentials to ESP32 SoftAP (192.168.4.1/provision)
-      await sendCredentialsToSoftAP(
+      final effectiveDeviceId = await sendCredentialsToSoftAP(
         ssid: ssid,
         password: password,
         setupToken: setupToken,
@@ -140,7 +141,8 @@ class IotProvisioningService {
       // 3. Cloud verification with timeout
       return await verifyConnectionInCloud(
         setupToken: setupToken,
-        deviceId: deviceId,
+        deviceId: effectiveDeviceId,
+        ssid: ssid,
         timeout: timeout,
       );
     } catch (e) {
@@ -154,7 +156,8 @@ class IotProvisioningService {
 
 
   /// Step 2: Credential Delivery via SoftAP HTTP POST to 192.168.4.1/provision
-  Future<bool> sendCredentialsToSoftAP({
+  /// Returns the canonical hardware deviceId confirmed by the ESP32 (e.g. SmartPlant-20FB3F).
+  Future<String> sendCredentialsToSoftAP({
     required String ssid,
     required String password,
     required String setupToken,
@@ -180,7 +183,14 @@ class IotProvisioningService {
       ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        return true;
+        String resolvedDeviceId = deviceId;
+        try {
+          final data = jsonDecode(response.body);
+          if (data is Map && data['deviceId'] != null && data['deviceId'].toString().trim().isNotEmpty) {
+            resolvedDeviceId = data['deviceId'].toString().trim();
+          }
+        } catch (_) {}
+        return resolvedDeviceId;
       } else {
         String errorMsg = 'Wi-Fi connection failed.';
         try {
@@ -200,69 +210,122 @@ class IotProvisioningService {
   }
 
   /// Step 3: Listen to Cloud Firestore for connection confirmation
-  /// (with 20-second timeout while phone falls back to normal internet)
+  /// (with active multi-listener and fast polling fallback while phone switches networks)
   Future<ProvisioningResult> verifyConnectionInCloud({
     required String setupToken,
     required String deviceId,
-    Duration timeout = const Duration(seconds: 20),
+    String? ssid,
+    Duration timeout = const Duration(seconds: 25),
   }) async {
+    final user = _auth.currentUser;
+    final uid = user?.uid;
     final provDocRef = _firestore.collection('provisioning').doc(setupToken);
     final devDocRef = _firestore.collection('iot_devices').doc(deviceId);
 
     final completer = Completer<ProvisioningResult>();
     StreamSubscription<DocumentSnapshot>? provSubscription;
     StreamSubscription<DocumentSnapshot>? devSubscription;
+    StreamSubscription<QuerySnapshot>? userQuerySubscription;
     Timer? timeoutTimer;
+    Timer? fastPollTimer;
 
     void cleanup() {
       timeoutTimer?.cancel();
+      fastPollTimer?.cancel();
       provSubscription?.cancel();
       devSubscription?.cancel();
+      userQuerySubscription?.cancel();
     }
 
-    timeoutTimer = Timer(timeout, () {
+    void handleSuccess({
+      required String resolvedDeviceId,
+      String? ip,
+      String? ssid,
+    }) {
+      cleanup();
+      if (!completer.isCompleted) {
+        completer.complete(
+          ProvisioningResult(
+            isSuccess: true,
+            message: 'ESP32 successfully connected to Wi-Fi and synced with Cloud Firestore!',
+            deviceId: resolvedDeviceId,
+            ip: ip,
+            ssid: ssid,
+          ),
+        );
+      }
+    }
+
+    void handleFailure(String message) {
       cleanup();
       if (!completer.isCompleted) {
         completer.complete(
           ProvisioningResult(
             isSuccess: false,
-            message: 'Connection verification timed out after 20 seconds. Please reconnect to ESP32 hotspot and check Wi-Fi password.',
+            message: message,
             deviceId: deviceId,
           ),
         );
       }
+    }
+
+    timeoutTimer = Timer(timeout, () {
+      handleFailure('Connection verification timed out after ${timeout.inSeconds} seconds. Please ensure the probe is powered on and within router range.');
     });
+
+    // Helper to evaluate device data
+    bool evaluateDeviceData(Map<String, dynamic> data, String docId) {
+      final bool isOnline = (data['isWifiConnected'] == true || data['wifiConnected'] == true);
+      final String sysState = (data['systemState'] ?? '').toString();
+      final String? ip = data['stationIp']?.toString();
+      final String? ssid = data['wifiSsid']?.toString() ?? data['ssid']?.toString();
+
+      // Check if lastSeen is recent (within 45s)
+      bool hasRecentHeartbeat = false;
+      if (data['lastSeen'] is Timestamp) {
+        final age = DateTime.now().difference((data['lastSeen'] as Timestamp).toDate()).inSeconds.abs();
+        if (age <= 45) hasRecentHeartbeat = true;
+      }
+
+      if (isOnline || sysState == 'CONNECTED_ONLINE' || (hasRecentHeartbeat && (ip != null && ip.isNotEmpty))) {
+        handleSuccess(
+          resolvedDeviceId: docId,
+          ip: ip,
+          ssid: ssid,
+        );
+        return true;
+      }
+      return false;
+    }
 
     // 1. Primary Check: Direct telemetry report in iot_devices/{deviceId}
     devSubscription = devDocRef.snapshots().listen(
       (snapshot) async {
         if (!snapshot.exists) return;
         final data = snapshot.data() ?? {};
-        final bool isOnline = (data['isWifiConnected'] == true || data['wifiConnected'] == true);
-        final String sysState = (data['systemState'] ?? '').toString();
-
-        if (isOnline || sysState == 'CONNECTED_ONLINE') {
-          cleanup();
-          final ip = data['stationIp']?.toString();
-          final ssid = data['wifiSsid']?.toString();
-
-          if (!completer.isCompleted) {
-            completer.complete(
-              ProvisioningResult(
-                isSuccess: true,
-                message: 'ESP32 successfully connected to Wi-Fi and synced with Cloud Firestore!',
-                deviceId: deviceId,
-                ip: ip,
-                ssid: ssid,
-              ),
-            );
-          }
-        }
+        evaluateDeviceData(data, deviceId);
       },
       onError: (_) {},
     );
 
-    // 2. Secondary Check: provisioning/{setupToken}
+    // 2. Query listener for user's devices (catches if ID resolved to another hardware ID)
+    if (uid != null && uid.isNotEmpty) {
+      userQuerySubscription = _firestore
+          .collection('iot_devices')
+          .where('userId', isEqualTo: uid)
+          .snapshots()
+          .listen(
+        (snap) {
+          for (final doc in snap.docs) {
+            final data = doc.data();
+            if (evaluateDeviceData(data, doc.id)) break;
+          }
+        },
+        onError: (_) {},
+      );
+    }
+
+    // 3. Secondary Check: provisioning/{setupToken}
     provSubscription = provDocRef.snapshots().listen(
       (snapshot) async {
         if (!snapshot.exists) return;
@@ -270,7 +333,6 @@ class IotProvisioningService {
         final status = (data['status'] ?? 'pending').toString().toLowerCase();
 
         if (status == 'connected') {
-          cleanup();
           final ip = data['ip']?.toString();
           final ssid = data['ssid']?.toString();
 
@@ -279,35 +341,71 @@ class IotProvisioningService {
             deviceId: deviceId,
             ssid: ssid ?? '',
             ip: ip,
+            isOnline: true,
           );
 
-          if (!completer.isCompleted) {
-            completer.complete(
-              ProvisioningResult(
-                isSuccess: true,
-                message: 'ESP32 successfully connected to Wi-Fi and synced with Cloud Firestore!',
-                deviceId: deviceId,
-                ip: ip,
-                ssid: ssid,
-              ),
-            );
-          }
+          handleSuccess(
+            resolvedDeviceId: deviceId,
+            ip: ip,
+            ssid: ssid,
+          );
         } else if (status == 'failed') {
-          cleanup();
           final errorMsg = data['errorMessage']?.toString() ?? 'Wi-Fi connection failed.';
-          if (!completer.isCompleted) {
-            completer.complete(
-              ProvisioningResult(
-                isSuccess: false,
-                message: errorMsg,
-                deviceId: deviceId,
-              ),
-            );
-          }
+          handleFailure(errorMsg);
         }
       },
       onError: (_) {},
     );
+
+    // 4. Fast Polling Loop (every 1.5s):
+    // In mobile environments, socket handoff between SoftAP and Router/Cellular can delay
+    // snapshot events. Active polling ensures instantaneous detection the moment internet restores!
+    fastPollTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) async {
+      if (completer.isCompleted) {
+        cleanup();
+        return;
+      }
+      try {
+        // Direct doc poll
+        final docSnap = await devDocRef.get();
+        if (docSnap.exists && docSnap.data() != null) {
+          if (evaluateDeviceData(docSnap.data()!, deviceId)) return;
+        } else {
+          // Self-heal: Once mobile phone leaves SoftAP and re-establishes internet,
+          // proactively create/ensure the device document exists in Firestore under user ownership!
+          // This allows the ESP32's telemetry PATCH to immediately succeed with 200 OK!
+          await createOrEnsureDeviceRecord(
+            deviceId: deviceId,
+            ssid: ssid ?? '',
+            isOnline: false,
+          ).catchError((_) {});
+        }
+
+        // User devices query poll
+        if (uid != null && uid.isNotEmpty) {
+          final userSnap = await _firestore
+              .collection('iot_devices')
+              .where('userId', isEqualTo: uid)
+              .get();
+          for (final doc in userSnap.docs) {
+            if (evaluateDeviceData(doc.data(), doc.id)) return;
+          }
+        }
+
+        // Provisioning doc poll
+        final pSnap = await provDocRef.get();
+        if (pSnap.exists && pSnap.data() != null) {
+          final pData = pSnap.data()!;
+          final st = (pData['status'] ?? '').toString().toLowerCase();
+          if (st == 'connected') {
+            final ip = pData['ip']?.toString();
+            final ssid = pData['ssid']?.toString();
+            handleSuccess(resolvedDeviceId: deviceId, ip: ip, ssid: ssid);
+            return;
+          }
+        }
+      } catch (_) {}
+    });
 
     return completer.future;
   }
@@ -317,11 +415,13 @@ class IotProvisioningService {
     required String deviceId,
     required String ssid,
     String? ip,
+    bool isOnline = false,
   }) async {
     return _registerOrUpdateDeviceRecord(
       deviceId: deviceId,
       ssid: ssid,
       ip: ip,
+      isOnline: isOnline,
     );
   }
 
@@ -330,6 +430,7 @@ class IotProvisioningService {
     required String deviceId,
     required String ssid,
     String? ip,
+    bool isOnline = true,
   }) async {
     final user = _auth.currentUser;
     if (user == null) return;
@@ -367,8 +468,8 @@ class IotProvisioningService {
       'linkedUserIds': FieldValue.arrayUnion([user.uid]),
       'ssid': ssid,
       'wifiSsid': ssid,
-      'isWifiConnected': true,
-      'wifiConnected': true,
+      'isWifiConnected': isOnline,
+      'wifiConnected': isOnline,
       'lastSeen': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -378,20 +479,51 @@ class IotProvisioningService {
     }
 
     if (!existing.exists) {
+      // Pre-determine IoT physical location based on mobile phone's location during setup
+      UserLocation? initialLoc;
+      try {
+        initialLoc = await WeatherService().resolveUserLocation();
+      } catch (_) {}
+
       updates.addAll({
         'name': 'Smart Plant Probe',
         'firmwareVersion': 'v4.1.0-StateMachine',
         'mode': 'MANUAL',
         'autoWaterEnabled': false, // Watering turned OFF by default!
         'lowThreshold': 25,
-        'highThreshold': 45,
+        'highThreshold': 65, // Standard optimal target (65%)
         'moisturePercent': 0.0,
         'rawADC': 4095,
         'isPumpRunning': false,
+        'isIndoor': true,
+        'environment': 'indoor',
+        'locationCity': initialLoc?.city ?? 'Kuala Lumpur',
+        'locationRegion': initialLoc?.region ?? 'Federal Territory',
+        'locationCountry': initialLoc?.country ?? 'Malaysia',
+        'locationLatitude': initialLoc?.latitude ?? 3.1390,
+        'locationLongitude': initialLoc?.longitude ?? 101.6869,
+        'city': initialLoc?.city ?? 'Kuala Lumpur',
         'createdAt': FieldValue.serverTimestamp(),
       });
       await deviceDoc.set(updates);
     } else {
+      // If updating an existing device that lacks a bound location, backfill it
+      final data = existing.data() ?? {};
+      if (data['locationCity'] == null && data['city'] == null) {
+        try {
+          final initialLoc = await WeatherService().resolveUserLocation();
+          updates.addAll({
+            'locationCity': initialLoc.city,
+            'locationRegion': initialLoc.region,
+            'locationCountry': initialLoc.country,
+            'locationLatitude': initialLoc.latitude,
+            'locationLongitude': initialLoc.longitude,
+            'city': initialLoc.city,
+            'isIndoor': data['isIndoor'] ?? true,
+            'environment': data['environment'] ?? 'indoor',
+          });
+        } catch (_) {}
+      }
       await deviceDoc.set(updates, SetOptions(merge: true));
     }
 

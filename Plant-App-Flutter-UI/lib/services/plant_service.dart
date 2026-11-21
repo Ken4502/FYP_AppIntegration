@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:urbangreen/models/plant_model.dart';
+import 'package:urbangreen/services/iot_firestore_service.dart';
 import 'platform/web_hardware_bridge.dart';
 
 class PlantService extends ChangeNotifier {
@@ -118,20 +119,11 @@ class PlantService extends ChangeNotifier {
     _isLoaded = true;
   }
 
-  void _saveToStorage() {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      final key = _storageKeyFor(user?.uid ?? _currentUserId);
-      final jsonStr = jsonEncode(_plants.map((p) => p.toJson()).toList());
-      WebHardwareBridge.saveStorage(key, jsonStr);
-      _syncToFirestore();
-    } catch (_) {}
-  }
-
   void _syncToFirestore() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
+        // Sync garden summary to user profile
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
           'gardenPlantsCount': _plants.length,
           'gardenPlants': _plants.map((p) => p.toJson()).toList(),
@@ -141,19 +133,58 @@ class PlantService extends ChangeNotifier {
     } catch (_) {}
   }
 
+  Future<void> _savePlantDocToFirestore(Plant plant, String uid) async {
+    try {
+      final data = plant.toJson();
+      data['userId'] = uid;
+      data['updatedAt'] = FieldValue.serverTimestamp();
+      await FirebaseFirestore.instance
+          .collection('plants')
+          .doc(plant.id)
+          .set(data, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error saving plant to firestore plants collection: $e');
+    }
+  }
+
   Future<void> _syncFromFirestoreIfAvailable() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
+        // 1. Fetch user-scoped plants from the root 'plants' collection
+        final plantSnap = await FirebaseFirestore.instance
+            .collection('plants')
+            .where('userId', isEqualTo: user.uid)
+            .get();
+
+        if (plantSnap.docs.isNotEmpty) {
+          final List<Plant> cloudPlants = [];
+          for (final doc in plantSnap.docs) {
+            final data = doc.data();
+            data['id'] = doc.id;
+            cloudPlants.add(Plant.fromJson(data));
+          }
+          _plants.clear();
+          _plants.addAll(cloudPlants);
+          _isLoaded = true;
+          _saveToStorageLocallyOnly();
+          notifyListeners();
+          return;
+        }
+
+        // 2. Fallback check for legacy user doc array
         final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
         if (doc.exists && doc.data() != null) {
           final data = doc.data()!;
-          if (data['gardenPlants'] is List) {
+          if (data['gardenPlants'] is List && (data['gardenPlants'] as List).isNotEmpty) {
             final List<dynamic> cloudList = data['gardenPlants'] as List<dynamic>;
             final List<Plant> cloudPlants = [];
             for (final item in cloudList) {
               if (item is Map<String, dynamic>) {
-                cloudPlants.add(Plant.fromJson(item));
+                final p = Plant.fromJson(item);
+                cloudPlants.add(p);
+                // Migrate to root plants collection
+                _savePlantDocToFirestore(p, user.uid);
               }
             }
             _plants.clear();
@@ -161,8 +192,15 @@ class PlantService extends ChangeNotifier {
             _isLoaded = true;
             _saveToStorageLocallyOnly();
             notifyListeners();
+            return;
           }
         }
+
+        // If neither root collection nor legacy array has plants, cloud account is empty
+        _plants.clear();
+        _saveToStorageLocallyOnly();
+        _isLoaded = true;
+        notifyListeners();
       }
     } catch (_) {}
   }
@@ -202,23 +240,61 @@ class PlantService extends ChangeNotifier {
     }
 
     _plants.insert(0, plantToSave);
-    _saveToStorage();
+    _saveToStorageLocallyOnly();
     notifyListeners();
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _savePlantDocToFirestore(plantToSave, user.uid);
+      _syncToFirestore();
+    }
   }
 
   void updatePlant(Plant plant) {
     final index = _plants.indexWhere((p) => p.id == plant.id);
     if (index != -1) {
       _plants[index] = plant;
-      _saveToStorage();
+      _saveToStorageLocallyOnly();
       notifyListeners();
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        _savePlantDocToFirestore(plant, user.uid);
+        _syncToFirestore();
+
+        // If this plant is linked to an IoT hardware device, synchronize name, image, and environment
+        if (plant.iotDeviceId != null && plant.iotDeviceId!.isNotEmpty) {
+          FirebaseFirestore.instance
+              .collection('iot_devices')
+              .doc(plant.iotDeviceId)
+              .set({
+            'linkedPlantName': plant.name,
+            'linkedPlantImage': plant.imageUrl,
+            'isIndoor': plant.isIndoor,
+            'environment': plant.environment,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true)).catchError((e) {
+            debugPrint('Error syncing plant metadata to iot_devices: $e');
+          });
+        }
+      }
     }
   }
 
   void deletePlant(String id) {
+    final plantToDelete = getPlantById(id);
     _plants.removeWhere((p) => p.id == id);
-    _saveToStorage();
+    _saveToStorageLocallyOnly();
     notifyListeners();
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      FirebaseFirestore.instance.collection('plants').doc(id).delete().catchError((_) {});
+      if (plantToDelete != null && plantToDelete.hasIot) {
+        IotFirestoreService().unlinkPlant(plantToDelete.iotDeviceId!);
+      }
+      _syncToFirestore();
+    }
   }
 
   Plant? getPlantById(String id) {
@@ -255,13 +331,18 @@ class PlantService extends ChangeNotifier {
   /// Assign an IoT device to a plant, strictly enforcing a 1-to-1 relationship:
   /// 1. Any other plant that previously had [deviceId] assigned has its probe unlinked.
   /// 2. [plantId] has its probe assigned to [deviceId].
+  /// 3. Synchronizes to Cloud Firestore plants collection and iot_devices document.
   void assignDeviceToPlant({required String plantId, required String deviceId}) {
     if (!_isLoaded) _loadFromStorage();
+    final user = FirebaseAuth.instance.currentUser;
 
     // 1. Revoke deviceId from any other plant
     for (int i = 0; i < _plants.length; i++) {
       if (_plants[i].iotDeviceId == deviceId && _plants[i].id != plantId) {
         _plants[i].iotDeviceId = null;
+        if (user != null) {
+          _savePlantDocToFirestore(_plants[i], user.uid);
+        }
       }
     }
 
@@ -269,36 +350,67 @@ class PlantService extends ChangeNotifier {
     final targetIndex = _plants.indexWhere((p) => p.id == plantId);
     if (targetIndex != -1) {
       _plants[targetIndex].iotDeviceId = deviceId;
+      final targetPlant = _plants[targetIndex];
+      if (user != null) {
+        _savePlantDocToFirestore(targetPlant, user.uid);
+      }
+
+      // Link probe in Cloud Firestore iot_devices
+      IotFirestoreService().linkPlant(
+        deviceId,
+        plantId: targetPlant.id,
+        plantName: targetPlant.name,
+        plantImage: targetPlant.imageUrl,
+        optimalMinMoisture: targetPlant.optimalMinMoisture,
+      );
     }
 
-    _saveToStorage();
+    _saveToStorageLocallyOnly();
     notifyListeners();
+    _syncToFirestore();
   }
 
   /// Unlinks any IoT device from a specific plant.
   void unassignDeviceFromPlant(String plantId) {
     if (!_isLoaded) _loadFromStorage();
+    final user = FirebaseAuth.instance.currentUser;
     final index = _plants.indexWhere((p) => p.id == plantId);
     if (index != -1) {
+      final oldDeviceId = _plants[index].iotDeviceId;
       _plants[index].iotDeviceId = null;
-      _saveToStorage();
+      if (user != null) {
+        _savePlantDocToFirestore(_plants[index], user.uid);
+      }
+      if (oldDeviceId != null && oldDeviceId.isNotEmpty) {
+        IotFirestoreService().unlinkPlant(oldDeviceId);
+      }
+      _saveToStorageLocallyOnly();
       notifyListeners();
+      _syncToFirestore();
     }
   }
 
   /// Unlinks a specific device from whatever plant it was assigned to.
-  void unassignDevice(String deviceId) {
+  void unassignDevice(String deviceId, {bool notifyDevice = true}) {
     if (!_isLoaded) _loadFromStorage();
+    final user = FirebaseAuth.instance.currentUser;
     bool changed = false;
     for (int i = 0; i < _plants.length; i++) {
       if (_plants[i].iotDeviceId == deviceId) {
         _plants[i].iotDeviceId = null;
+        if (user != null) {
+          _savePlantDocToFirestore(_plants[i], user.uid);
+        }
         changed = true;
       }
     }
+    if (notifyDevice) {
+      IotFirestoreService().unlinkPlant(deviceId);
+    }
     if (changed) {
-      _saveToStorage();
+      _saveToStorageLocallyOnly();
       notifyListeners();
+      _syncToFirestore();
     }
   }
 }

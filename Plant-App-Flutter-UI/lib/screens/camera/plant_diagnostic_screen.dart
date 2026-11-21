@@ -1327,12 +1327,34 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.1),
+                          color: item.isDetected
+                              ? color.withValues(alpha: 0.12)
+                              : const Color(0xFF16A34A).withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: item.isDetected
+                                ? color.withValues(alpha: 0.3)
+                                : const Color(0xFF16A34A).withValues(alpha: 0.3),
+                          ),
                         ),
-                        child: Text(
-                          "Confidence: ${item.confidence.toStringAsFixed(1)}%",
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (!item.isDetected) ...[
+                              const Icon(Icons.check_circle_rounded, size: 12, color: Color(0xFF16A34A)),
+                              const SizedBox(width: 4),
+                            ],
+                            Text(
+                              item.isDetected
+                                  ? "Detected (${item.confidence.toStringAsFixed(0)}% Conf)"
+                                  : "Clear (${item.confidence.toStringAsFixed(0)}% Certain)",
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: item.isDetected ? color : const Color(0xFF16A34A),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                   ],

@@ -5,6 +5,7 @@ import '../../models/iot_connection_mode.dart';
 import '../../models/plant_model.dart';
 import '../../models/plant_species_profile_model.dart';
 import '../../services/iot_hybrid_connectivity_service.dart';
+import '../../services/iot_firestore_service.dart';
 import '../../services/platform/web_hardware_bridge.dart';
 
 class IotAdvancedManagementScreen extends StatefulWidget {
@@ -846,13 +847,16 @@ class _IotAdvancedManagementScreenState extends State<IotAdvancedManagementScree
               onPressed: () async {
                 Navigator.pop(ctx);
                 setState(() => _isLoading = true);
-                final res = await _service.resetIotDevice(_config.deviceId);
+                await IotFirestoreService().factoryResetDevice(_config.deviceId);
                 setState(() {
                   _selectedPlant = null;
                   _isBleScanning = false;
                   _isLoading = false;
                 });
-                _showFeedback(res);
+                _showFeedback(OperationFeedback.success(
+                  'Factory Reset Complete',
+                  'Device wiped and unlinked. Ready for clean setup.',
+                ));
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
@@ -1462,10 +1466,14 @@ class _IotAdvancedManagementScreenState extends State<IotAdvancedManagementScree
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Profile: ${profile.speciesName}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: kPrimaryDark),
+                    Expanded(
+                      child: Text(
+                        'Profile: ${profile.speciesName}',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: kPrimaryDark),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
@@ -1555,7 +1563,14 @@ class _IotAdvancedManagementScreenState extends State<IotAdvancedManagementScree
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Live ESP32 Telemetry & Actuator', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              const Expanded(
+                child: Text(
+                  'Live ESP32 Telemetry & Actuator',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
               Row(
                 children: [
                   CircleAvatar(

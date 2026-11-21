@@ -412,20 +412,26 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Icon(Icons.inventory_2_outlined, size: 18, color: theme.colorScheme.primary),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Order #${order.id}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                              color: isDark ? kDarkTextPrimary : kTextPrimary,
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Icon(Icons.inventory_2_outlined, size: 18, color: theme.colorScheme.primary),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Order #${order.id}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: isDark ? kDarkTextPrimary : kTextPrimary,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:urbangreen/constants.dart';
 import 'package:urbangreen/models/plant_model.dart';
 import 'package:urbangreen/models/plant_species_profile_model.dart';
+import 'package:urbangreen/services/plant_service.dart';
+import 'package:urbangreen/services/iot_firestore_service.dart';
 
 class EditPlantScreen extends StatefulWidget {
   final Plant plant;
@@ -45,7 +47,7 @@ class EditPlantScreenState extends State<EditPlantScreen> {
   PlantSpeciesProfile get _currentProfile =>
       PlantSpeciesProfile.resolveForSpecies(_speciesController.text.trim());
 
-  void _saveChanges() {
+  void _saveChanges() async {
     final parsedInterval = int.tryParse(_intervalController.text.trim()) ?? widget.plant.wateringIntervalDays;
     final bool hasIot = widget.plant.hasIot;
     final updatedPlant = widget.plant.copyWith(
@@ -57,7 +59,23 @@ class EditPlantScreenState extends State<EditPlantScreen> {
       reminderTime: _reminderTime,
       reminderEnabled: hasIot ? false : _reminderEnabled,
     );
-    Navigator.pop(context, updatedPlant);
+
+    // Save directly to plant service (persists locally and syncs to Firestore)
+    PlantService().updatePlant(updatedPlant);
+
+    // If plant has a linked IoT device, synchronize environment to device document in Firestore
+    if (updatedPlant.iotDeviceId != null && updatedPlant.iotDeviceId!.isNotEmpty) {
+      try {
+        await IotFirestoreService().updateDeviceEnvironment(
+          updatedPlant.iotDeviceId!,
+          isIndoor: updatedPlant.isIndoor,
+        );
+      } catch (_) {}
+    }
+
+    if (mounted) {
+      Navigator.pop(context, updatedPlant);
+    }
   }
 
   @override
@@ -67,6 +85,13 @@ class EditPlantScreenState extends State<EditPlantScreen> {
       backgroundColor: isDark ? kDarkBackgroundColor : kBackgroundColor,
       appBar: AppBar(
         title: const Text("Edit Plant Profile"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.check_rounded),
+            tooltip: 'Save Botanical Changes',
+            onPressed: _saveChanges,
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(kDefaultPadding),
@@ -296,16 +321,22 @@ class EditPlantScreenState extends State<EditPlantScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.water_drop_rounded, color: Color(0xFF0284C7), size: 20),
-                            SizedBox(width: 8),
-                            Text(
-                              'Moisture Spectrum',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary),
-                            ),
-                          ],
+                        const Expanded(
+                          child: Row(
+                            children: [
+                              Icon(Icons.water_drop_rounded, color: Color(0xFF0284C7), size: 20),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Moisture Spectrum',
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+                        const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
@@ -407,21 +438,27 @@ class EditPlantScreenState extends State<EditPlantScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
-                          children: [
-                            Icon(
-                              widget.plant.hasIot ? Icons.sensors_rounded : Icons.alarm_rounded,
-                              color: kPrimaryColor,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              widget.plant.hasIot ? 'Hydration & Offline Watchdog' : 'Watering Reminder & Interval',
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary),
-                            ),
-                          ],
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Icon(
+                                widget.plant.hasIot ? Icons.sensors_rounded : Icons.alarm_rounded,
+                                color: kPrimaryColor,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  widget.plant.hasIot ? 'Hydration & Offline Watchdog' : 'Watering Reminder & Interval',
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        if (widget.plant.hasIot)
+                        if (widget.plant.hasIot) ...[
+                          const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
@@ -433,6 +470,7 @@ class EditPlantScreenState extends State<EditPlantScreen> {
                               style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF16A34A)),
                             ),
                           ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 12),

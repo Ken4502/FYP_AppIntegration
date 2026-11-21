@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 import '../models/iot_device_model.dart';
-import 'iot_hybrid_connectivity_service.dart' show IotActivityLog, IotLogType;
+import 'iot_hybrid_connectivity_service.dart';
+import 'plant_service.dart';
+import 'weather_service.dart' show UserLocation;
 
 class IotFirestoreService {
   static final IotFirestoreService _instance = IotFirestoreService._internal();
@@ -190,6 +193,9 @@ class IotFirestoreService {
     }
 
     await _devicesCol.doc(deviceId).set({
+      'id': deviceId,
+      'userId': uid,
+      'registeredBy': uid,
       'linkedUserIds': FieldValue.arrayUnion([uid]),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
@@ -223,11 +229,7 @@ class IotFirestoreService {
   /// Find online devices on the same Wi-Fi network that can be linked by any account
   Future<List<IotDevice>> discoverOnlineDevicesOnWifi({String? wifiSsid}) async {
     try {
-      Query<Map<String, dynamic>> query = _devicesCol;
-      if (wifiSsid != null && wifiSsid.trim().isNotEmpty) {
-        query = query.where('wifiSsid', isEqualTo: wifiSsid.trim());
-      }
-      final snap = await query.limit(20).get();
+      final snap = await _devicesCol.limit(30).get();
       final now = DateTime.now();
       final List<IotDevice> results = [];
 
@@ -235,6 +237,13 @@ class IotFirestoreService {
         final data = doc.data();
         data['id'] = doc.id;
         final dev = IotDevice.fromMap(data);
+        if (wifiSsid != null && wifiSsid.trim().isNotEmpty) {
+          final filter = wifiSsid.trim().toLowerCase();
+          final dSsid = (dev.wifiSsid ?? '').trim().toLowerCase();
+          if (dSsid.isNotEmpty && dSsid != filter) {
+            continue;
+          }
+        }
         // Include devices with wifi connected or seen within 30 minutes
         if (dev.isWifiConnected || now.difference(dev.lastSeen).inMinutes < 30) {
           results.add(dev);
@@ -264,6 +273,80 @@ class IotFirestoreService {
       deviceId,
       title: 'Thresholds Updated',
       detail: 'Moisture target configured to $lowThreshold% - $highThreshold%.',
+      type: IotLogType.system,
+    );
+  }
+
+  /// Update the IoT device's physical site location (permanently bound to Firestore)
+  Future<void> updateDeviceLocation(String deviceId, UserLocation location) async {
+    await _devicesCol.doc(deviceId).set({
+      'locationCity': location.city,
+      'locationRegion': location.region,
+      'locationCountry': location.country,
+      'locationLatitude': location.latitude,
+      'locationLongitude': location.longitude,
+      'city': location.city,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    await addDeviceLog(
+      deviceId,
+      title: 'IoT Location Updated',
+      detail: 'Physical deployment site set to ${location.displayName}. Weather data now anchored to this location.',
+      type: IotLogType.system,
+    );
+  }
+
+  /// Update the IoT device's environment setting (Indoor vs Outdoor)
+  Future<void> updateDeviceEnvironment(String deviceId, {required bool isIndoor}) async {
+    await _devicesCol.doc(deviceId).set({
+      'isIndoor': isIndoor,
+      'environment': isIndoor ? 'indoor' : 'outdoor',
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    await addDeviceLog(
+      deviceId,
+      title: 'Environment Configured',
+      detail: isIndoor
+          ? 'Environment switched to Indoor (Fixed target, sheltered from rain/wind).'
+          : 'Environment switched to Outdoor (Dynamic weather-adaptive hydration enabled).',
+      type: IotLogType.system,
+    );
+  }
+
+  /// Update IoT notification configuration in Cloud Firestore
+  Future<void> updateNotificationSettings(
+    String deviceId, {
+    bool? lowMoistureAlertEnabled,
+    bool? dynamicMoistureAlertEnabled,
+    int? customMoistureAlertThreshold,
+    bool? dailyWeatherNotificationEnabled,
+  }) async {
+    final Map<String, dynamic> data = {
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    if (lowMoistureAlertEnabled != null) {
+      data['lowMoistureAlertEnabled'] = lowMoistureAlertEnabled;
+    }
+    if (dynamicMoistureAlertEnabled != null) {
+      data['dynamicMoistureAlertEnabled'] = dynamicMoistureAlertEnabled;
+    }
+    if (customMoistureAlertThreshold != null) {
+      data['lowThreshold'] = customMoistureAlertThreshold;
+      data['lowMoistureThreshold'] = customMoistureAlertThreshold;
+      data['customMoistureAlertThreshold'] = customMoistureAlertThreshold;
+    }
+    if (dailyWeatherNotificationEnabled != null) {
+      data['dailyWeatherNotificationEnabled'] = dailyWeatherNotificationEnabled;
+    }
+
+    await _devicesCol.doc(deviceId).set(data, SetOptions(merge: true));
+
+    await addDeviceLog(
+      deviceId,
+      title: 'Alert Settings Updated',
+      detail: 'Notification preferences and trigger thresholds updated.',
       type: IotLogType.system,
     );
   }
@@ -492,10 +575,22 @@ class IotFirestoreService {
 
   /// Full Factory Reset & Wipe Cycle:
   /// Dispatches remote FACTORY_RESET command to ESP32 (if online) to wipe NVS preferences,
-  /// then removes the device document from Cloud Firestore.
+  /// also tries local SoftAP /reset if connected to hotspot,
+  /// polls for ESP32 acknowledgment (executed == true), unassigns any linked plant references,
+  /// deletes all activity logs, removes the device document from Cloud Firestore, and clears local caches.
   Future<void> factoryResetDevice(String deviceId) async {
+    // 0. If phone is currently connected to the ESP32 setup hotspot, trigger direct local wipe
     try {
-      // 1. Dispatch FACTORY_RESET remote command so ESP32 clears its NVS
+      await http.post(Uri.parse('http://192.168.4.1/reset')).timeout(const Duration(milliseconds: 800));
+    } catch (_) {}
+
+    try {
+      // 1. Ensure any plant referencing this device is unassigned immediately (without re-creating device doc!)
+      try {
+        PlantService().unassignDevice(deviceId, notifyDevice: false);
+      } catch (_) {}
+
+      // 2. Dispatch FACTORY_RESET remote command so ESP32 clears its NVS
       final cmdId = 'cmd_reset_${DateTime.now().millisecondsSinceEpoch}';
       await _devicesCol.doc(deviceId).set({
         'pendingCommand': {
@@ -509,36 +604,58 @@ class IotFirestoreService {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // 2. Allow brief window for ESP32 sync cycle if online
-      await Future.delayed(const Duration(milliseconds: 800));
+      // 3. Poll for ESP32 acknowledgment (executed == true) up to 5 seconds
+      for (int i = 0; i < 5; i++) {
+        await Future.delayed(const Duration(seconds: 1));
+        final snap = await _devicesCol.doc(deviceId).get();
+        if (!snap.exists) break;
+        final data = snap.data();
+        final pending = data?['pendingCommand'] as Map<String, dynamic>?;
+        if (pending?['executed'] == true) {
+          // ESP32 confirmed receipt of FACTORY_RESET! Allow 400ms for chip to restart
+          await Future.delayed(const Duration(milliseconds: 400));
+          break;
+        }
+      }
     } catch (_) {}
 
-    // 3. Delete the device document from Cloud Firestore
+    // 4. Delete the device document from Cloud Firestore & clear activity logs
     await deleteDevice(deviceId);
+
+    // 5. Clean up any leftover provisioning documents
+    try {
+      final provSnap = await _firestore.collection('provisioning').limit(10).get();
+      for (final doc in provSnap.docs) {
+        await doc.reference.delete();
+      }
+    } catch (_) {}
+
+    // 6. Reset local hardware connectivity caches
+    try {
+      await IotHybridConnectivityService().resetDeviceWifi(deviceId);
+      IotHybridConnectivityService().clearActivityLogs();
+    } catch (_) {}
   }
 
-  /// Delete / Unpair device from Cloud Firestore (Wiping all data & logs)
+  /// Delete / Unpair device from Cloud Firestore (Wiping all data, logs & associations)
   Future<void> deleteDevice(String deviceId) async {
+    // 0. If phone is connected to SoftAP, signal local wipe
     try {
-      // 1. Attempt to dispatch FACTORY_RESET command first if device document exists
-      final cmdId = 'cmd_wipe_${DateTime.now().millisecondsSinceEpoch}';
-      await _devicesCol.doc(deviceId).set({
-        'pendingCommand': {
-          'command': 'FACTORY_RESET',
-          'commandId': cmdId,
-          'timestamp': FieldValue.serverTimestamp(),
-          'executed': false,
-        },
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-      await Future.delayed(const Duration(milliseconds: 500));
+      await http.post(Uri.parse('http://192.168.4.1/reset')).timeout(const Duration(milliseconds: 500));
+    } catch (_) {}
+
+    // 1. Ensure any plant referencing this device is unassigned in Firestore
+    try {
+      PlantService().unassignDevice(deviceId, notifyDevice: false);
     } catch (_) {}
 
     // 2. Completely delete all subcollection activity logs
     await clearDeviceLogs(deviceId);
 
     // 3. Delete the root device document
-    await _devicesCol.doc(deviceId).delete();
+    try {
+      await _devicesCol.doc(deviceId).delete();
+    } catch (_) {}
   }
 
   /// Stream real-time activity and watering logs from `iot_devices/{deviceId}/logs`

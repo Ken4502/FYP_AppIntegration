@@ -82,16 +82,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.insights, color: Colors.white, size: 22),
-                              SizedBox(width: 8),
-                              Text(
-                                'Garden Health Index',
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                              ),
-                            ],
+                          const Expanded(
+                            child: Row(
+                              children: [
+                                Icon(Icons.insights, color: Colors.white, size: 22),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Garden Health Index',
+                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
+                          const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(

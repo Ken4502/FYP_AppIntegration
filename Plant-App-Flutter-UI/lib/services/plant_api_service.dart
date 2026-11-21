@@ -230,30 +230,38 @@ class PlantApiService {
   }
 
   /// Sends a captured plant photo to the CoreTech AI backend (/api/predict)
-  /// Supports optional macroImageFile for two-shot clinical diagnosis (Canopy + Macro symptom).
+  /// Supports optional macroImageFile for two-shot clinical diagnosis (Canopy + Macro symptom)
+  /// and optional soilMoistureStatus ('dry', 'damp', 'soggy') from IoT sensor or user probe.
   Future<PlantDiagnosisResponse> diagnosePlant(
     XFile imageFile, {
     XFile? macroImageFile,
+    XFile? secondaryImageFile,
     String plantGroup = 'auto',
+    String? soilMoistureStatus,
   }) async {
     // Attempt auto-discovery if current URL is inactive
     await ensureActiveServerUrl();
 
+    final effectiveSecondary = secondaryImageFile ?? macroImageFile;
     final uri = Uri.parse('$_serverUrl/api/predict');
     AppLoggerService().info(
       'PhytoCareAI',
-      'Sending plant diagnosis request to $_serverUrl (group: $plantGroup, macro: ${macroImageFile != null})',
+      'Sending plant diagnosis request to $_serverUrl (group: $plantGroup, macro: ${effectiveSecondary != null}, soil: $soilMoistureStatus)',
       category: LogCategory.http,
       metadata: {
         'url': uri.toString(),
         'filename': imageFile.name,
-        'has_macro': macroImageFile != null,
+        'has_macro': effectiveSecondary != null,
+        'soil_moisture': soilMoistureStatus,
       },
     );
 
     try {
       final request = http.MultipartRequest('POST', uri);
       request.fields['plant'] = plantGroup;
+      if (soilMoistureStatus != null && soilMoistureStatus.trim().isNotEmpty) {
+        request.fields['soil_moisture_status'] = soilMoistureStatus.trim();
+      }
 
       final bytes = await imageFile.readAsBytes();
       final multipartFile = http.MultipartFile.fromBytes(
@@ -263,14 +271,11 @@ class PlantApiService {
       );
       request.files.add(multipartFile);
 
-      if (macroImageFile != null) {
-        final macroBytes = await macroImageFile.readAsBytes();
-        final macroMultipart = http.MultipartFile.fromBytes(
-          'macro_file',
-          macroBytes,
-          filename: macroImageFile.name.isNotEmpty ? macroImageFile.name : 'plant_macro.jpg',
-        );
-        request.files.add(macroMultipart);
+      if (effectiveSecondary != null) {
+        final secBytes = await effectiveSecondary.readAsBytes();
+        final secName = effectiveSecondary.name.isNotEmpty ? effectiveSecondary.name : 'secondary_capture.jpg';
+        request.files.add(http.MultipartFile.fromBytes('macro_file', secBytes, filename: secName));
+        request.files.add(http.MultipartFile.fromBytes('secondary_file', secBytes, filename: secName));
       }
 
       final streamedResponse = await request.send().timeout(
@@ -710,6 +715,36 @@ class PlantApiService {
               'confidence_impact': '+18% Mechanical Damage Confirmation',
             },
           ],
+        },
+      ],
+      'needs_user_soil_check': true,
+      'detections': [
+        {
+          'class': 'crispy_brown_edges',
+          'display_label': 'Crispy Brown Edges & Dried Foliage',
+          'confidence': 0.88,
+          'confidence_tier': 'high',
+          'source': 'whole_plant_check',
+          'bbox': [40, 50, 320, 310],
+          'probable_causes': [
+            'Low indoor humidity (AC / dry air exposure)',
+            'Underwatering / Irregular watering intervals',
+            'Tap water mineral / fluoride salt sensitivity',
+          ],
+          'recommended_check': 'Touch the top 2 inches of soil: Is it dry, damp, or soggy?',
+        },
+        {
+          'class': 'dark_spots_necrosis',
+          'display_label': 'Dark Spots / Necrosis',
+          'confidence': 0.85,
+          'confidence_tier': 'high',
+          'source': 'yolo',
+          'bbox': [110, 130, 240, 280],
+          'probable_causes': [
+            'Bacterial leaf spot (Xanthomonas)',
+            'Secondary necrotic leaf lesion',
+          ],
+          'recommended_check': 'Excise heavily spotted leaflets with alcohol-sterilized shears.',
         },
       ],
     });

@@ -1669,17 +1669,23 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
-                children: [
-                  Icon(Icons.receipt_long_rounded, size: 18, color: kPrimaryColor),
-                  SizedBox(width: 8),
-                  Text(
-                    'Recent IoT Activity Logs',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kTextPrimary),
-                  ),
-                ],
+              const Expanded(
+                child: Row(
+                  children: [
+                    Icon(Icons.receipt_long_rounded, size: 18, color: kPrimaryColor),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Recent IoT Activity Logs',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kTextPrimary),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              if (widget.onViewLogs != null)
+              if (widget.onViewLogs != null) ...[
+                const SizedBox(width: 8),
                 TextButton(
                   onPressed: widget.onViewLogs,
                   style: TextButton.styleFrom(
@@ -1689,6 +1695,7 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
                   ),
                   child: const Text('View All ➔', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryColor)),
                 ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -1810,23 +1817,28 @@ class _IotConnectionSetupScreenState extends State<IotConnectionSetupScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Phone Registration Status',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: kTextPrimary),
-                          ),
-                          Text(
-                            _service.isDeviceRegistered ? 'Linked to this phone & account 🟢' : 'Not registered to this phone ⚪',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: _service.isDeviceRegistered ? kStatusSuccess : kTextSecondary,
-                              fontWeight: FontWeight.w600,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Phone Registration Status',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: kTextPrimary),
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                        ],
+                            Text(
+                              _service.isDeviceRegistered ? 'Linked to this phone & account 🟢' : 'Not registered to this phone ⚪',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: _service.isDeviceRegistered ? kStatusSuccess : kTextSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       OutlinedButton(
                         onPressed: _toggleDeviceRegistration,
                         style: OutlinedButton.styleFrom(

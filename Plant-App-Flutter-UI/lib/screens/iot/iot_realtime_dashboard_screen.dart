@@ -847,12 +847,28 @@ class _IotRealtimeDashboardScreenState extends State<IotRealtimeDashboardScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Auto-Trigger: <$_lowThreshold%',
-                          style: const TextStyle(fontSize: 11, color: kStatusDanger, fontWeight: FontWeight.bold)),
-                      Text('Raw ADC: $_rawAdc',
-                          style: const TextStyle(fontSize: 11, color: kTextSecondary, fontFamily: 'monospace')),
-                      Text('Cutoff: ≥$_highThreshold%',
-                          style: const TextStyle(fontSize: 11, color: kStatusSuccess, fontWeight: FontWeight.bold)),
+                      Flexible(
+                        child: Text(
+                          'Auto-Trigger: <$_lowThreshold%',
+                          style: const TextStyle(fontSize: 11, color: kStatusDanger, fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Text(
+                          'Raw ADC: $_rawAdc',
+                          style: const TextStyle(fontSize: 11, color: kTextSecondary, fontFamily: 'monospace'),
+                        ),
+                      ),
+                      Flexible(
+                        child: Text(
+                          'Cutoff: ≥$_highThreshold%',
+                          style: const TextStyle(fontSize: 11, color: kStatusSuccess, fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.end,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 14),

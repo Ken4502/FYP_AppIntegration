@@ -296,29 +296,34 @@ class _PlantEcommerceScreenState extends State<PlantEcommerceScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Botanical Marketplace 🪴',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: isDark ? kDarkTextSecondary : Colors.grey.shade700,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Botanical Marketplace 🪴',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark ? kDarkTextSecondary : Colors.grey.shade700,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'UrbanGreen Store',
-                                  style: TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w800,
-                                    color: isDark ? kDarkTextPrimary : kTextPrimary,
-                                    letterSpacing: -0.5,
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'UrbanGreen Store',
+                                    style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w800,
+                                      color: isDark ? kDarkTextPrimary : kTextPrimary,
+                                      letterSpacing: -0.5,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
+                            const SizedBox(width: 8),
                             // Shopping Cart Action Button
                             Stack(
                               alignment: Alignment.center,

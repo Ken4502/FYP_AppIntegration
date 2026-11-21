@@ -125,26 +125,30 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Select Your City 📍',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? kDarkTextPrimary : kTextPrimary,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Select Your City 📍',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? kDarkTextPrimary : kTextPrimary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Pinpoint city for live weather & RainGuard',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? kDarkTextSecondary : kTextSecondary,
+                      const SizedBox(height: 2),
+                      Text(
+                        'Pinpoint city for live weather & RainGuard',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? kDarkTextSecondary : kTextSecondary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.close_rounded),

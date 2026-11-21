@@ -4,6 +4,7 @@ import '../../components/standard_app_bar.dart';
 import '../../constants.dart';
 import '../../services/iot_firestore_service.dart';
 import '../../services/iot_provisioning_service.dart';
+import '../../services/weather_service.dart';
 
 /// Standalone Isolated Wi-Fi Provisioning Screen
 /// Seamlessly detects the ESP32 setup hotspot, requests the chip to scan
@@ -53,6 +54,7 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
   String _statusMessage = '';
   String? _assignedIp;
   String? _connectedSsid;
+  String? _setupLocationName;
 
   @override
   void initState() {
@@ -161,8 +163,22 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
     }
 
     // Resolve target hardware ID: prioritize detected ID, then widget initial ID,
-    // then existing user hardware from Firestore so reconnection NEVER spawns a duplicate!
+    // probe live hotspot if still generic, then existing user hardware from Firestore so reconnection NEVER spawns a duplicate!
     String deviceId = _detectedDeviceId ?? (widget.initialDeviceId ?? '');
+    if (deviceId.isEmpty || deviceId == 'SmartPlant-ESP32') {
+      try {
+        final status = await _provisioningService.checkHotspotStatus(
+          timeout: const Duration(seconds: 1),
+        );
+        if (status != null && status['deviceId'] != null) {
+          final sDevId = status['deviceId'].toString().trim();
+          if (sDevId.isNotEmpty) {
+            _detectedDeviceId = sDevId;
+            deviceId = sDevId;
+          }
+        }
+      } catch (_) {}
+    }
     if (deviceId.isEmpty || deviceId == 'SmartPlant-ESP32') {
       try {
         final existing = await IotFirestoreService().getUserDevices();
@@ -190,12 +206,14 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
 
     try {
       // 3. Send HTTP POST directly to ESP32 SoftAP at 192.168.4.1/provision
-      await _provisioningService.sendCredentialsToSoftAP(
+      final confirmedDeviceId = await _provisioningService.sendCredentialsToSoftAP(
         ssid: ssid,
         password: pass,
         setupToken: _setupToken!,
         deviceId: deviceId,
       );
+
+      final targetDeviceId = (confirmedDeviceId.isNotEmpty) ? confirmedDeviceId : deviceId;
 
       // Dismiss connecting dialog cleanly
       _dismissConnectingDialog();
@@ -204,13 +222,14 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
 
       // 4. Upon 200 OK, transition to Step 2 (Cloud Verification)
       setState(() {
+        _detectedDeviceId = targetDeviceId;
         _isSendingToSoftAp = false;
         _currentStep = 2;
-        _countdownSeconds = 20;
-        _statusMessage = 'ESP32 shut down SoftAP. Verifying Cloud Firestore connection...';
+        _countdownSeconds = 25;
+        _statusMessage = 'ESP32 connected to "$ssid". Verifying Cloud Firestore connection...';
       });
 
-      _startVerificationCountdown(_setupToken!, deviceId, ssid);
+      _startVerificationCountdown(_setupToken!, targetDeviceId, ssid);
     } catch (e) {
       // Dismiss connecting dialog cleanly
       _dismissConnectingDialog();
@@ -339,11 +358,20 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
     _provisioningService.createOrEnsureDeviceRecord(
       deviceId: deviceId,
       ssid: ssid,
+      isOnline: false,
     );
+
+    // Resolve pre-determined location for Step 3 summary
+    WeatherService().resolveUserLocation().then((loc) {
+      if (mounted) {
+        setState(() => _setupLocationName = loc.displayName);
+      }
+    }).catchError((_) {});
 
     _provisioningService.verifyConnectionInCloud(
       setupToken: setupToken,
       deviceId: deviceId,
+      ssid: ssid,
       timeout: const Duration(seconds: 25),
     ).then((result) {
       _countdownTimer?.cancel();
@@ -355,6 +383,9 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
         _statusMessage = result.message;
         _assignedIp = result.ip;
         _connectedSsid = result.ssid ?? ssid;
+        if (result.deviceId != null && result.deviceId!.isNotEmpty) {
+          _detectedDeviceId = result.deviceId;
+        }
       });
     });
   }
@@ -1032,7 +1063,11 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
                     _buildDetailRow('Local Station IP', _assignedIp!),
                   ],
                   const Divider(height: 16),
-                  _buildDetailRow('Watering Mode', 'MANUAL (Off by default)'),
+                  _buildDetailRow('IoT Site Location', _setupLocationName ?? 'Auto-Bound via GPS'),
+                  const Divider(height: 16),
+                  _buildDetailRow('Environment', 'Indoor (Sheltered - Fixed Target)'),
+                  const Divider(height: 16),
+                  _buildDetailRow('Watering Mode', 'MANUAL (Off by default for safety)'),
                 ],
               ),
             ),
@@ -1126,10 +1161,19 @@ class _IotSetupWizardScreenState extends State<IotSetupWizardScreen> {
 
   Widget _buildDetailRow(String label, String value) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: const TextStyle(fontSize: 12, color: kTextSecondary)),
-        Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextPrimary)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextPrimary),
+            textAlign: TextAlign.end,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
+          ),
+        ),
       ],
     );
   }

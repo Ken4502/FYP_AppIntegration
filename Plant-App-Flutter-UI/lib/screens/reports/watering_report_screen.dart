@@ -69,14 +69,18 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              'Weekly Hydration Volume',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color: kTextPrimary,
+                            const Expanded(
+                              child: Text(
+                                'Weekly Hydration Volume',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: kTextPrimary,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                               decoration: BoxDecoration(
@@ -514,9 +518,12 @@ class _WateringReportScreenState extends State<WateringReportScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Record Hydration Event',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? kDarkTextPrimary : kTextPrimary),
+                      Expanded(
+                        child: Text(
+                          'Record Hydration Event',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? kDarkTextPrimary : kTextPrimary),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.close),

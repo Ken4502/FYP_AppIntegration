@@ -75,30 +75,44 @@ def main():
     else:
         print("[!] Backend startup took longer than expected, initializing tunnel...")
 
-    # 3. Start Cloudflare Quick Tunnel
+    # 3. Start Cloudflare Quick Tunnel with dedicated logfile (prevents stdout pipe deadlock)
     print("[*] Opening Cloudflare HTTPS Public Tunnel...")
+    cf_log_path = APP_DIR / "cloudflared.log"
+    if cf_log_path.exists():
+        try:
+            cf_log_path.unlink()
+        except Exception:
+            pass
+
     cf_cmd = [
         str(CLOUDFLARED_EXE),
         "tunnel",
-        "--url", "http://127.0.0.1:8001"
+        "--url", "http://127.0.0.1:8001",
+        "--no-autoupdate",
+        "--logfile", str(cf_log_path)
     ]
 
     cf_proc = subprocess.Popen(
         cf_cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1
+        cwd=str(APP_DIR),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
     )
 
     tunnel_url = None
     url_pattern = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
 
-    for line in iter(cf_proc.stdout.readline, ""):
-        match = url_pattern.search(line)
-        if match:
-            tunnel_url = match.group(0)
-            break
+    for _ in range(60):
+        if cf_log_path.exists():
+            try:
+                content = cf_log_path.read_text(encoding="utf-8", errors="ignore")
+                match = url_pattern.search(content)
+                if match:
+                    tunnel_url = match.group(0)
+                    break
+            except Exception:
+                pass
+        time.sleep(0.5)
 
     if tunnel_url:
         with open(URL_FILE, "w", encoding="utf-8") as f:
@@ -142,7 +156,14 @@ def main():
     signal.signal(signal.SIGTERM, cleanup)
 
     try:
-        cf_proc.wait()
+        while True:
+            if cf_proc.poll() is not None:
+                print(f"[!] Cloudflared tunnel exited unexpectedly with code {cf_proc.returncode}")
+                break
+            if backend_proc.poll() is not None:
+                print(f"[!] Backend exited unexpectedly with code {backend_proc.returncode}")
+                break
+            time.sleep(1)
     except KeyboardInterrupt:
         cleanup()
 

@@ -60,21 +60,14 @@ class LowMoistureDecisionService {
     final iotService = IotHybridConnectivityService();
     final plantService = PlantService();
 
-    IotDevice device;
+    IotDevice? device;
     if (deviceId.isNotEmpty) {
       final matches = iotService.connectedIotDevices.where((d) => d.id == deviceId);
       if (matches.isNotEmpty) {
         device = matches.first;
-      } else {
-        device = iotService.connectedIotDevices.isNotEmpty
-            ? iotService.connectedIotDevices.first
-            : IotDevice(id: 'SmartPlant-ESP32', name: 'SmartPlant-ESP32');
       }
-    } else {
-      device = iotService.connectedIotDevices.isNotEmpty
-          ? iotService.connectedIotDevices.first
-          : IotDevice(id: 'SmartPlant-ESP32', name: 'SmartPlant-ESP32');
     }
+    device ??= iotService.connectedIotDevices.isNotEmpty ? iotService.connectedIotDevices.first : null;
 
     Plant? plant;
     if (plantId.isNotEmpty) {
@@ -83,21 +76,19 @@ class LowMoistureDecisionService {
         plant = matches.first;
       }
     }
-    if (plant == null) {
-      final matches = plantService.myPlants.where((p) => p.iotDeviceId == device.id);
+    if (plant == null && device != null) {
+      final matches = plantService.myPlants.where((p) => p.iotDeviceId == device!.id);
       if (matches.isNotEmpty) {
         plant = matches.first;
       }
     }
-    plant ??= plantService.myPlants.isNotEmpty
-        ? plantService.myPlants.first
-        : Plant(
-            id: 'specimen_1',
-            name: 'Monstera Deliciosa',
-            species: 'Monstera Deliciosa',
-            imageUrl: 'assets/images/image_1.png',
-            iotDeviceId: device.id,
-          );
+
+    // Guardrail: If no real plant is linked or if the notification was a pairing / online event,
+    // NEVER fabricate a fake specimen or force open the plant hydration decision screen!
+    if (plant == null || device == null) {
+      debugPrint('Notification tap: Device $deviceId is not assigned to a plant. Suppressing hydration decision.');
+      return;
+    }
 
     openDecisionScreen(device: device, plant: plant);
   }
@@ -126,17 +117,13 @@ class LowMoistureDecisionService {
     final matches = plantService.myPlants.where((p) => p.iotDeviceId == device.id);
     if (matches.isNotEmpty) {
       plant = matches.first;
-    } else {
-      plant = plantService.myPlants.isNotEmpty ? plantService.myPlants.first : null;
     }
 
-    plant ??= Plant(
-      id: 'specimen_1',
-      name: device.name,
-      species: 'Monitored Specimen',
-      imageUrl: 'assets/images/image_1.png',
-      iotDeviceId: device.id,
-    );
+    // Guardrail: If this IoT probe is unassigned (not linked to any plant in the garden),
+    // do NOT fire plant hydration alerts for a probe measuring room air!
+    if (plant == null) {
+      return;
+    }
 
     final int critMin = plant.criticalMinMoisture;
     final int optMin = plant.optimalMinMoisture;
@@ -246,19 +233,19 @@ class LowMoistureDecisionService {
     activeAlertNotifier.value = null;
 
     final plantService = PlantService();
-    final targetPlant = plant ??
-        plantService.myPlants.firstWhere(
-          (p) => p.iotDeviceId == device.id,
-          orElse: () => plantService.myPlants.isNotEmpty
-              ? plantService.myPlants.first
-              : Plant(
-                  id: 'specimen_1',
-                  name: device.name,
-                  species: 'Smart Houseplant',
-                  imageUrl: 'assets/images/image_1.png',
-                  iotDeviceId: device.id,
-                ),
-        );
+    Plant? targetPlant = plant;
+    if (targetPlant == null) {
+      final matches = plantService.myPlants.where((p) => p.iotDeviceId == device.id);
+      if (matches.isNotEmpty) {
+        targetPlant = matches.first;
+      }
+    }
+
+    // Never open a plant watering decision screen without a legitimate plant!
+    if (targetPlant == null) {
+      debugPrint('openDecisionScreen: No real plant assigned to device ${device.id}. Suppressing decision screen.');
+      return;
+    }
 
     final targetContext = context ?? navigatorKey?.currentContext;
     if (targetContext != null) {
@@ -267,7 +254,7 @@ class LowMoistureDecisionService {
         MaterialPageRoute(
           builder: (_) => LowMoistureDecisionScreen(
             device: device,
-            plant: targetPlant,
+            plant: targetPlant!,
           ),
         ),
       );
@@ -276,7 +263,7 @@ class LowMoistureDecisionService {
         MaterialPageRoute(
           builder: (_) => LowMoistureDecisionScreen(
             device: device,
-            plant: targetPlant,
+            plant: targetPlant!,
           ),
         ),
       );

@@ -201,16 +201,21 @@ class _IotScanningScreenState extends State<IotScanningScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Discovered ESP32 Nodes on Wi-Fi:',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary),
+                const Expanded(
+                  child: Text(
+                    'Discovered ESP32 Nodes on Wi-Fi:',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                if (_isScanning)
+                if (_isScanning) ...[
+                  const SizedBox(width: 8),
                   const SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2, color: kPrimaryColor),
                   ),
+                ],
               ],
             ),
             const SizedBox(height: 12),

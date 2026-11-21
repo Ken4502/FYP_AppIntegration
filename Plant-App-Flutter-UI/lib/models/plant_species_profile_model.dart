@@ -26,7 +26,17 @@ class PlantSpeciesProfile {
   })  : criticalMinMoisture = criticalMinMoisture ?? (lowMoistureThreshold > 18 ? lowMoistureThreshold - 10 : 10),
         overwaterMaxMoisture = overwaterMaxMoisture ?? (highMoistureThreshold + 12);
 
-  int get optimalMinMoisture => lowMoistureThreshold;
+  /// Widened optimal water level threshold:
+  /// Takes half of the thirsty threshold (span between criticalMinMoisture and lowMoistureThreshold)
+  /// and includes it into the optimal state instead, rounded off to the nearest 5%.
+  int get optimalMinMoisture {
+    final int thirstySpan = lowMoistureThreshold - criticalMinMoisture;
+    if (thirstySpan <= 2) return lowMoistureThreshold;
+    final double rawMid = criticalMinMoisture + (thirstySpan / 2.0);
+    final int rounded = (rawMid / 5.0).round() * 5;
+    return rounded.clamp(criticalMinMoisture + 1, lowMoistureThreshold);
+  }
+
   int get optimalMaxMoisture => highMoistureThreshold;
 
   /// Comprehensive botanical species dictionary

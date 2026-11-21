@@ -7,12 +7,10 @@ import '../../models/plant_model.dart';
 import '../../services/iot_firestore_service.dart';
 import '../../services/iot_hybrid_connectivity_service.dart';
 import '../../services/plant_service.dart';
-import '../../services/weather_service.dart';
 import 'iot_activity_logs_screen.dart';
 import 'iot_details_screen.dart';
 import 'iot_setup_wizard_screen.dart';
 import '../../components/iot_connection_guide_sheet.dart';
-import '../../components/city_picker_sheet.dart';
 import '../../services/platform/web_hardware_bridge.dart';
 
 /// Central IoT Management Screen
@@ -33,11 +31,6 @@ class _IotManagementScreenState extends State<IotManagementScreen>
   late TabController _tabController;
   final IotFirestoreService _firestoreService = IotFirestoreService();
   final PlantService _plantService = PlantService();
-  final WeatherService _weatherService = WeatherService();
-
-  // Weather state
-  WeatherData? _weatherData;
-  bool _isLoadingWeather = false;
 
   // Refresh feedback state
   bool _isManualRefreshing = false;
@@ -50,7 +43,6 @@ class _IotManagementScreenState extends State<IotManagementScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this, initialIndex: 0);
     _plantService.addListener(_onPlantServiceChanged);
-    _loadWeather();
   }
 
   void _onPlantServiceChanged() {
@@ -64,31 +56,14 @@ class _IotManagementScreenState extends State<IotManagementScreen>
     super.dispose();
   }
 
-  Future<void> _loadWeather() async {
-    if (_isLoadingWeather) return;
-    setState(() => _isLoadingWeather = true);
-    try {
-      final w = await _weatherService.fetchLocalWeather();
-      if (mounted) {
-        setState(() {
-          _weatherData = w;
-          _isLoadingWeather = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _isLoadingWeather = false);
-    }
-  }
-
   Future<void> _handleRefresh() async {
     setState(() => _isManualRefreshing = true);
-    await _loadWeather();
     await Future.delayed(const Duration(milliseconds: 600));
     if (mounted) {
       setState(() => _isManualRefreshing = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('⚡ Cloud telemetry & local weather refreshed from Firestore.'),
+          content: Text('⚡ Cloud telemetry refreshed from Firestore.'),
           backgroundColor: kPrimaryColor,
           duration: Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
@@ -294,28 +269,6 @@ class _IotManagementScreenState extends State<IotManagementScreen>
     );
   }
 
-  Future<void> _quickWaterPulse(IotDevice device) async {
-    await _firestoreService.triggerManualPulse(device.id, durationSeconds: 3);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.water_drop_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text('💧 Quick water pulse (3s) sent to Firestore for ${device.name}!'),
-              ),
-            ],
-          ),
-          backgroundColor: const Color(0xFF0284C7),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
   Future<void> _toggleWateringMode(IotDevice device) async {
     final newMode = !device.autoWaterEnabled;
     await _firestoreService.setWateringMode(device.id, autoWaterEnabled: newMode);
@@ -358,9 +311,32 @@ class _IotManagementScreenState extends State<IotManagementScreen>
     );
 
     if (confirm == true && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: kPrimaryColor),
+                  SizedBox(height: 16),
+                  Text('Wiping ESP32 memory & unpairing...', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 6),
+                  Text('Erasing Wi-Fi and NVS memory on the probe', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
       await _firestoreService.factoryResetDevice(device.id);
-      _plantService.unassignDevice(device.id);
+
       if (mounted) {
+        Navigator.pop(context); // Dismiss progress dialog
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Unpaired ${device.name}. Factory reset sent to device.'),
@@ -1367,17 +1343,13 @@ class _IotManagementScreenState extends State<IotManagementScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 1. Real-Time Local Weather Card
-            _buildWeatherSummaryCard(isDark),
-            const SizedBox(height: 14),
-
-            // 2. Specimen Attachment Mode Alert (if opened with plantId)
+            // 1. Specimen Attachment Mode Alert (if opened with plantId)
             if (widget.plantId != null) ...[
               _buildAttachmentInstructionCard(),
               const SizedBox(height: 14),
             ],
 
-            // 3. Section Header: Active Sensors Count & Add Button
+            // 2. Section Header: Active Sensors Count & Add Button
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -1424,149 +1396,6 @@ class _IotManagementScreenState extends State<IotManagementScreen>
     );
   }
 
-  /// Real-Time Local Weather of the User's City with Rain Guard Status
-  void _openCityPicker(BuildContext context) {
-    CityPickerSheet.show(
-      context,
-      onCitySelected: (loc) async {
-        setState(() => _isLoadingWeather = true);
-        final newWeather = await _weatherService.selectCity(loc);
-        if (mounted) {
-          setState(() {
-            _weatherData = newWeather;
-            _isLoadingWeather = false;
-          });
-        }
-      },
-    );
-  }
-
-  Widget _buildWeatherSummaryCard(bool isDark) {
-    final w = _weatherData;
-
-    return InkWell(
-      onTap: () => _openCityPicker(context),
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isDark ? kDarkCardColor : kSurfaceColor,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0284C7).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.cloud_queue_rounded, color: Color(0xFF0284C7), size: 22),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              w != null ? w.locationName : 'Local City Weather',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: isDark ? kDarkTextPrimary : kTextPrimary,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.edit_location_alt_rounded, size: 14, color: kPrimaryColor),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: kPrimaryColor.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text(
-                              'LIVE REST',
-                              style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: kPrimaryColor),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        w != null
-                            ? '${w.weatherCondition} • ${w.temperature.toStringAsFixed(1)}°C • ${w.relativeHumidity}% Humidity'
-                            : 'Fetching live meteorological data...',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: isDark ? kDarkTextSecondary : kTextSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (_isLoadingWeather)
-                  const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: kPrimaryColor),
-                  )
-                else
-                  const Icon(Icons.keyboard_arrow_right_rounded, size: 18, color: Colors.grey),
-              ],
-            ),
-          if (w != null) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: (w.isRainGuardActive ? const Color(0xFFFEF3C7) : kPrimaryColor.withValues(alpha: 0.08)),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    w.isRainGuardActive ? Icons.umbrella_rounded : Icons.eco_rounded,
-                    size: 14,
-                    color: w.isRainGuardActive ? const Color(0xFFB45309) : kPrimaryDark,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      w.rainGuardMessage,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: w.isRainGuardActive ? const Color(0xFFB45309) : kPrimaryDark,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    ),);
-  }
-
   /// Banner when opened from plant detail screen to link an IoT sensor
   Widget _buildAttachmentInstructionCard() {
     return Container(
@@ -1594,9 +1423,7 @@ class _IotManagementScreenState extends State<IotManagementScreen>
   /// Comprehensive Operational Card for each Configured ESP32
   Widget _buildOperationalDeviceCard(IotDevice device, bool isDark) {
     final bool isOnline = device.isOnline;
-    final int moisture = (device.moistureLevel != null)
-        ? (device.moistureLevel! * 100).round().clamp(0, 100)
-        : 0;
+    final int moisture = device.moisturePercentInt;
 
     // Moisture status classification
     final bool isDry = moisture < device.lowMoistureThreshold;
@@ -1738,6 +1565,105 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
+                          const SizedBox(height: 3),
+                          Row(
+                            children: [
+                              const Icon(Icons.place_rounded, size: 12, color: Color(0xFF0284C7)),
+                              const SizedBox(width: 3),
+                              Flexible(
+                                child: Text(
+                                  device.locationDisplayName,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: isDark ? kDarkTextSecondary : kTextSecondary,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              InkWell(
+                                borderRadius: BorderRadius.circular(4),
+                                onTap: () async {
+                                  final newIndoor = !device.isIndoor;
+                                  await _firestoreService.updateDeviceEnvironment(device.id, isIndoor: newIndoor);
+                                  final linkedPlant = _plantService.getPlantForDevice(device.id);
+                                  if (linkedPlant != null) {
+                                    final updatedPlant = linkedPlant.copyWith(environment: newIndoor ? 'indoor' : 'outdoor');
+                                    _plantService.updatePlant(updatedPlant);
+                                  }
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(newIndoor
+                                            ? '🏠 Switched ${device.name} to Indoor (Sheltered mode)'
+                                            : '🌿 Switched ${device.name} to Outdoor (Live microclimate & RainGuard active)'),
+                                        backgroundColor: kStatusSuccess,
+                                        duration: const Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: device.isIndoor
+                                        ? (isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.3) : const Color(0xFFEFF6FF))
+                                        : (isDark ? const Color(0xFF064E3B).withValues(alpha: 0.3) : const Color(0xFFF0FDF4)),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(
+                                      color: device.isIndoor
+                                          ? const Color(0xFF3B82F6).withValues(alpha: 0.4)
+                                          : const Color(0xFF10B981).withValues(alpha: 0.4),
+                                      width: 0.8,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        device.isIndoor ? Icons.home_rounded : Icons.park_rounded,
+                                        size: 10,
+                                        color: device.isIndoor ? const Color(0xFF2563EB) : const Color(0xFF059669),
+                                      ),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        device.isIndoor ? 'Indoor' : 'Outdoor',
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          color: device.isIndoor
+                                              ? (isDark ? const Color(0xFF93C5FD) : const Color(0xFF1D4ED8))
+                                              : (isDark ? const Color(0xFF6EE7B7) : const Color(0xFF065F46)),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 2),
+                                      Icon(
+                                        Icons.swap_horiz_rounded,
+                                        size: 10,
+                                        color: device.isIndoor ? const Color(0xFF3B82F6) : const Color(0xFF10B981),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 5),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: kPrimaryColor.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  'Target: ${device.highMoistureThreshold}%',
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: kPrimaryColor,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
@@ -1816,36 +1742,43 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              Icon(Icons.water_drop_rounded, size: 18, color: moistureColor),
-                              const SizedBox(width: 6),
-                              Text(
-                                '$moisture%',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
-                                  color: moistureColor,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: moistureColor.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  moistureStatusText,
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Icon(Icons.water_drop_rounded, size: 18, color: moistureColor),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '$moisture%',
                                   style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
                                     color: moistureColor,
                                   ),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: moistureColor.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      moistureStatusText,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: moistureColor,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
+                          const SizedBox(width: 6),
                           // Mode Indicator
                           GestureDetector(
                             onTap: () => _toggleWateringMode(device),
@@ -1900,20 +1833,30 @@ class _IotManagementScreenState extends State<IotManagementScreen>
 
                       // Reading and Watered Timestamps
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Last Reading: ${_formatDateTime(device.lastReadingAt ?? device.lastSeen)}',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: isDark ? kDarkTextSecondary : kTextSecondary,
+                          Flexible(
+                            child: Text(
+                              'Last Reading: ${_formatDateTime(device.lastReadingAt ?? device.lastSeen)}',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: isDark ? kDarkTextSecondary : kTextSecondary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
                           ),
-                          Text(
-                            'Last Watered: ${_formatDateTime(device.lastWateredAt)}',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: isDark ? kDarkTextSecondary : kTextSecondary,
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              'Last Watered: ${_formatDateTime(device.lastWateredAt)}',
+                              textAlign: TextAlign.end,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? kDarkTextSecondary : kTextSecondary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
                           ),
                         ],
@@ -1986,7 +1929,7 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                 ),
                 const SizedBox(height: 12),
 
-                // Actions Row: Quick Water (3s Pulse) & Details Button
+                // Actions Row: Settings & Details Button
                 Row(
                   children: [
                     if (widget.plantId != null) ...[
@@ -2005,38 +1948,21 @@ class _IotManagementScreenState extends State<IotManagementScreen>
                         ),
                       ),
                     ] else ...[
-                      // Quick Water 3s Pulse Button
+                      // Settings & Details Button
                       Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _quickWaterPulse(device),
-                          icon: const Icon(Icons.water_drop_rounded, size: 16),
+                        child: OutlinedButton.icon(
+                          onPressed: () => _openDeviceDetails(device),
+                          icon: const Icon(Icons.tune_rounded, size: 16),
                           label: const Text(
-                            'Quick Water (3s)',
+                            'Settings & Telemetry Dashboard',
                             style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                           ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0284C7),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            elevation: 0,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: kPrimaryColor,
+                            side: const BorderSide(color: kPrimaryColor, width: 1.2),
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Settings & Details Button
-                      OutlinedButton.icon(
-                        onPressed: () => _openDeviceDetails(device),
-                        icon: const Icon(Icons.tune_rounded, size: 16),
-                        label: const Text(
-                          'Settings & Thresholds',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: kPrimaryColor,
-                          side: const BorderSide(color: kPrimaryColor, width: 1.2),
-                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                       ),
                     ],
