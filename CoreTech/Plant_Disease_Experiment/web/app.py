@@ -1056,6 +1056,8 @@ async def api_predict(
             effective_key = gemini_api_key if isinstance(gemini_api_key, str) and gemini_api_key.strip() else get_gemini_api_key()
             effective_sms = soil_moisture_status if isinstance(soil_moisture_status, str) else None
             v2_res = run_v2_diagnosis(pil_img, secondary_img=macro_pil, gemini_api_key=effective_key, soil_moisture_status=effective_sms)
+            v2_res["image_width"] = pil_img.width
+            v2_res["image_height"] = pil_img.height
 
             if not v2_res.get("is_plant", True) or v2_res.get("status") == "no_plant" or v2_res.get("species", {}).get("name") == "No Plant Detected":
                 prep_b64 = v2_res.get("preprocessed_image_base64")

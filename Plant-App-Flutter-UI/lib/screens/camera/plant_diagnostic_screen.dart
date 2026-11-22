@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -42,7 +43,8 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
   final GlobalKey _rustKey = GlobalKey();
   final GlobalKey _wateringKey = GlobalKey();
   final GlobalKey _holeKey = GlobalKey();
-  final Map<String, int> _userClarifierAnswers = {};
+  final GlobalKey _previewKey = GlobalKey();
+  String _selectedCategoryFilter = 'all'; // 'all', 'microorganism', 'pestInsect', 'rust', 'watering'
 
   @override
   void initState() {
@@ -156,23 +158,6 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
           spots: spots ?? SpotsInfo(hasSpots: false, spotsCount: 0, infectedAreaPct: 0.0, statusMessage: ''),
           abiotic: abiotic,
           predictions: diagnosis?.predictions ?? [],
-        );
-
-    final clarifierQuestions = diagnosis?.clarifierQuestions ??
-        PlantDiagnosisResponse.synthesizeClarifierQuestions(
-          species: diagnosis?.species ??
-              SpeciesInfo(name: plantName, confidence: confidence, detectedMode: '', topCandidates: []),
-          diagnosis: diagnosis?.diagnosis ??
-              DiagnosisInfo(
-                conditionName: conditionName,
-                category: category,
-                isHealthy: isHealthy,
-                confidence: confidence,
-                severity: severity,
-              ),
-          spots: spots ?? SpotsInfo(hasSpots: false, spotsCount: 0, infectedAreaPct: 0.0, statusMessage: ''),
-          abiotic: abiotic,
-          holeAnalysis: holeAnalysis,
         );
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -330,6 +315,7 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
 
             // Visual Inspection / Annotated Lesion Preview (Tap to zoom & 90° rotation)
             _buildInteractiveCardPreview(spots?.annotatedImageBase64),
+            _buildCategoryAreaFilterBar(context, multiCategory, isDark),
             const SizedBox(height: 16),
 
             // Non-Plant Notice Banner (if applicable)
@@ -415,13 +401,6 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
               isDark,
               holeAnalysis: holeAnalysis,
             ),
-
-            const SizedBox(height: 20),
-
-            // =================================================================
-            // OPTION 2: CLINICAL DIFFERENTIAL TRIAGE (INTERACTIVE CLARIFIERS)
-            // =================================================================
-            _buildInteractiveClarifierTriageWidget(context, clarifierQuestions, isDark),
 
             const SizedBox(height: 20),
 
@@ -557,34 +536,6 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
               category: category,
             ),
             const SizedBox(height: 20),
-
-            // Top AI Candidates (Differential Diagnosis)
-            if (diagnosis?.predictions.isNotEmpty == true) ...[
-              _buildSectionTitle(context, "Differential Diagnosis Candidates"),
-              const SizedBox(height: 8),
-              ...diagnosis!.predictions.take(4).map(
-                    (p) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8.0),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              p.conditionName,
-                              style: const TextStyle(fontWeight: FontWeight.w500),
-                            ),
-                          ),
-                          Text(
-                            "${p.confidence.toStringAsFixed(1)}%",
-                            style: TextStyle(
-                              color: theme.colorScheme.primary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-            ],
             const SizedBox(height: 24),
           ],
         ),
@@ -829,12 +780,16 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
                   children: [
                     Row(
                       children: [
-                        Text(
-                          item.title,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? kDarkTextPrimary : kTextPrimary,
+                        Flexible(
+                          child: Text(
+                            item.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? kDarkTextPrimary : kTextPrimary,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -896,6 +851,39 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
                 ),
               ),
               const SizedBox(width: 8),
+              // "View Area" jump button
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      _selectedCategoryFilter = item.id;
+                    });
+                    _scrollToCategory(_previewKey);
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: color.withValues(alpha: 0.4), width: 0.9),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.crop_free_rounded, size: 12, color: color),
+                        const SizedBox(width: 4),
+                        Text(
+                          "View Area",
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
               // "Details" jump pill
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1227,12 +1215,16 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        item.title,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? kDarkTextPrimary : kTextPrimary,
+                      Flexible(
+                        child: Text(
+                          item.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? kDarkTextPrimary : kTextPrimary,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -1247,20 +1239,57 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
                     ],
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    item.isDetected ? item.severityLevel.toUpperCase() : "OPTIMAL",
-                    style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {
+                          setState(() {
+                            _selectedCategoryFilter = item.id;
+                          });
+                          _scrollToCategory(_previewKey);
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: color.withValues(alpha: 0.4), width: 0.8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.center_focus_strong_rounded, size: 13, color: color),
+                              const SizedBox(width: 4),
+                              Text(
+                                "View in Photo",
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: color),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        item.isDetected ? item.severityLevel.toUpperCase() : "OPTIMAL",
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1520,270 +1549,6 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
                     ),
                   ),
                 ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ===========================================================================
-  // OPTION 2: CLINICAL DIFFERENTIAL TRIAGE (INTERACTIVE CLARIFIERS)
-  // ===========================================================================
-  Widget _buildInteractiveClarifierTriageWidget(
-    BuildContext context,
-    List<DiagnosticClarifierQuestion> questions,
-    bool isDark,
-  ) {
-    if (questions.isEmpty) return const SizedBox.shrink();
-
-    final answeredCount = _userClarifierAnswers.length;
-    final totalCount = questions.length;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? kDarkCardColor : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFF6366F1).withValues(alpha: 0.35),
-          width: 1.4,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header Banner
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: const Color(0xFF6366F1).withValues(alpha: 0.08),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(19)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(7),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6366F1).withValues(alpha: 0.18),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.psychology_alt_rounded, color: Color(0xFF6366F1), size: 20),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Clinical Differential Triage",
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? kDarkTextPrimary : kTextPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        "Disambiguate overlapping symptoms with physical tactile checks",
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: isDark ? kDarkTextSecondary : kTextSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6366F1).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    "$answeredCount / $totalCount verified",
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF4F46E5),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Questions List
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "When visual symptoms overlap (e.g. rust spores vs sunburn scorch, or underwatering vs root rot), answer these quick physical checks to confirm diagnosis confidence:",
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.4,
-                    color: isDark ? kDarkTextSecondary : kTextSecondary,
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                ...questions.asMap().entries.map((entry) {
-                  final qIndex = entry.key;
-                  final q = entry.value;
-                  final selectedOpt = _userClarifierAnswers[q.id];
-
-                  return Container(
-                    margin: EdgeInsets.only(bottom: qIndex < questions.length - 1 ? 14 : 0),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: isDark ? Colors.black.withValues(alpha: 0.2) : const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: selectedOpt != null
-                            ? const Color(0xFF6366F1).withValues(alpha: 0.4)
-                            : (isDark ? kDarkBorderSubtle : kBorderSubtle),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF6366F1).withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                "Q${qIndex + 1}",
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF6366F1),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                q.questionText,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: isDark ? kDarkTextPrimary : kTextPrimary,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          "Clinical rationale: ${q.rationale}",
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            fontStyle: FontStyle.italic,
-                            color: isDark ? kDarkTextSecondary : kTextSecondary,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-
-                        // Options
-                        ...q.options.asMap().entries.map((optEntry) {
-                          final optIndex = optEntry.key;
-                          final opt = optEntry.value;
-                          final isSelected = selectedOpt == optIndex;
-
-                          return InkWell(
-                            onTap: () {
-                              setState(() {
-                                _userClarifierAnswers[q.id] = optIndex;
-                              });
-                            },
-                            borderRadius: BorderRadius.circular(10),
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 6),
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? const Color(0xFF6366F1).withValues(alpha: 0.12)
-                                    : (isDark ? kDarkCardColor : Colors.white),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? const Color(0xFF6366F1)
-                                      : (isDark ? kDarkBorderSubtle : kBorderSubtle),
-                                  width: isSelected ? 1.4 : 1,
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                                    size: 16,
-                                    color: isSelected
-                                        ? const Color(0xFF6366F1)
-                                        : (isDark ? Colors.white38 : Colors.black38),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      opt.text,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                                        color: isDark ? kDarkTextPrimary : kTextPrimary,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }),
-
-                        // Dynamic Feedback Banner when selected
-                        if (selectedOpt != null) ...[
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.verified_rounded, size: 14, color: Color(0xFF10B981)),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    "Clinical triage match: ${q.options[selectedOpt].indication} (${q.options[selectedOpt].confidenceImpact})",
-                                    style: const TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF047857),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  );
-                }),
               ],
             ),
           ),
@@ -2274,9 +2039,216 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
     );
   }
 
+
+  // ===========================================================================
+  // CATEGORY-SPECIFIC DETECTED AREA SELECTOR BAR
+  // ===========================================================================
+  Widget _buildCategoryAreaFilterBar(
+    BuildContext context,
+    MultiCategoryDiagnosis? multiCategory,
+    bool isDark,
+  ) {
+    final allDetections = widget.diagnosis?.detections ?? [];
+    
+    int countFor(String catId) {
+      if (catId == 'all') return allDetections.length;
+      return allDetections.where((d) => d.categoryId == catId).length;
+    }
+
+    final categories = [
+      {'id': 'all', 'label': 'All Areas', 'icon': Icons.grid_view_rounded, 'color': kPrimaryColor},
+      {'id': 'microorganism', 'label': 'Microorganisms', 'icon': Icons.coronavirus_outlined, 'color': const Color(0xFFDC2626)},
+      {'id': 'pestInsect', 'label': 'Pests & Insects', 'icon': Icons.pest_control_rounded, 'color': const Color(0xFFD97706)},
+      {'id': 'rust', 'label': 'Rust Fungi', 'icon': Icons.lens_blur_rounded, 'color': const Color(0xFFEA580C)},
+      {'id': 'watering', 'label': 'Watering Balance', 'icon': Icons.water_drop_outlined, 'color': const Color(0xFF0284C7)},
+    ];
+
+    final activeCat = categories.firstWhere((c) => c['id'] == _selectedCategoryFilter, orElse: () => categories[0]);
+    final activeCount = countFor(_selectedCategoryFilter);
+    final activeColor = activeCat['color'] as Color;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? kDarkCardColor : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDark ? kDarkBorderSubtle : kBorderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.center_focus_strong_rounded, size: 18, color: kPrimaryColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  "Interactive Category Area Inspector",
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? kDarkTextPrimary : kTextPrimary,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: activeColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  _selectedCategoryFilter == 'all' ? "${allDetections.length} Total Zones" : "$activeCount Detected",
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.bold,
+                    color: activeColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "Tap a category below to highlight its detected foliar areas on the photo:",
+            style: TextStyle(fontSize: 11, color: Colors.grey),
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: categories.map((cat) {
+                final id = cat['id'] as String;
+                final label = cat['label'] as String;
+                final icon = cat['icon'] as IconData;
+                final color = cat['color'] as Color;
+                final isSelected = _selectedCategoryFilter == id;
+                final count = countFor(id);
+
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        setState(() {
+                          _selectedCategoryFilter = id;
+                        });
+                      },
+                      borderRadius: BorderRadius.circular(20),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: isSelected ? color : (isDark ? kDarkSurfaceColor : const Color(0xFFF3F4F6)),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isSelected ? color : (isDark ? kDarkBorderSubtle : Colors.grey.shade300),
+                            width: isSelected ? 1.6 : 1.0,
+                          ),
+                          boxShadow: isSelected
+                              ? [
+                                  BoxShadow(
+                                    color: color.withValues(alpha: 0.35),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(icon, size: 14, color: isSelected ? Colors.white : color),
+                            const SizedBox(width: 6),
+                            Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.bold,
+                                color: isSelected ? Colors.white : (isDark ? kDarkTextPrimary : kTextPrimary),
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: isSelected ? Colors.white.withValues(alpha: 0.25) : color.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                count > 0 ? "$count" : "Clear",
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: isSelected ? Colors.white : color,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          // Status Callout Banner
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: activeCount > 0 ? activeColor.withValues(alpha: 0.08) : Colors.green.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: activeCount > 0 ? activeColor.withValues(alpha: 0.25) : Colors.green.withValues(alpha: 0.25),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  activeCount > 0 ? Icons.remove_red_eye_rounded : Icons.check_circle_rounded,
+                  size: 15,
+                  color: activeCount > 0 ? activeColor : const Color(0xFF10B981),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    activeCount > 0
+                        ? "Showing $activeCount detected zone(s) for ${activeCat['label']}. Tap photo above to zoom & rotate."
+                        : "✓ Optimal: No lesions detected for ${activeCat['label']}.",
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: activeCount > 0 ? activeColor : const Color(0xFF047857),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildInteractiveCardPreview(String? base64Str) {
+    final detections = widget.diagnosis?.detections ?? [];
+    final imgW = widget.diagnosis?.imageWidth ?? 0;
+    final imgH = widget.diagnosis?.imageHeight ?? 0;
+
     return Center(
       child: Container(
+        key: _previewKey,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
@@ -2291,12 +2263,18 @@ class _PlantDiagnosticScreenState extends State<PlantDiagnosticScreen> {
           borderRadius: BorderRadius.circular(20),
           child: Stack(
             children: [
-              // Tappable main image
+              // Tappable main image with category-specific detection bounding box overlay
               InkWell(
                 onTap: () => _openFullScreenPreview(base64Str),
                 child: RotatedBox(
                   quarterTurns: _cardQuarterTurns,
-                  child: _buildVisualPreview(base64Str),
+                  child: CategoryDetectionOverlay(
+                    detections: detections,
+                    selectedCategory: _selectedCategoryFilter,
+                    imageWidth: imgW,
+                    imageHeight: imgH,
+                    child: _buildVisualPreview(base64Str),
+                  ),
                 ),
               ),
 
@@ -3131,5 +3109,166 @@ class _DiagnosticFullScreenImageViewerState
         ),
       ),
     );
+  }
+}
+
+
+// =============================================================================
+// CATEGORY-SPECIFIC DETECTED AREA VISUALIZER OVERLAY
+// =============================================================================
+
+class CategoryDetectionOverlay extends StatelessWidget {
+  final Widget child;
+  final List<SymptomDetection> detections;
+  final String selectedCategory; // 'all', 'microorganism', 'pestInsect', 'rust', 'watering'
+  final int imageWidth;
+  final int imageHeight;
+
+  const CategoryDetectionOverlay({
+    super.key,
+    required this.child,
+    required this.detections,
+    required this.selectedCategory,
+    this.imageWidth = 0,
+    this.imageHeight = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (detections.isEmpty) return child;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return CustomPaint(
+          foregroundPainter: DetectionBoxPainter(
+            detections: detections,
+            selectedCategory: selectedCategory,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+          ),
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+class DetectionBoxPainter extends CustomPainter {
+  final List<SymptomDetection> detections;
+  final String selectedCategory;
+  final int imageWidth;
+  final int imageHeight;
+
+  DetectionBoxPainter({
+    required this.detections,
+    required this.selectedCategory,
+    required this.imageWidth,
+    required this.imageHeight,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (detections.isEmpty || size.width <= 0 || size.height <= 0) return;
+
+    final imgW = imageWidth > 0
+        ? imageWidth.toDouble()
+        : (detections.map((d) => d.bbox.length >= 3 ? d.bbox[2] : 0).fold<int>(0, math.max)).toDouble();
+    final imgH = imageHeight > 0
+        ? imageHeight.toDouble()
+        : (detections.map((d) => d.bbox.length >= 4 ? d.bbox[3] : 0).fold<int>(0, math.max)).toDouble();
+
+    if (imgW <= 0 || imgH <= 0) return;
+
+    final scaleX = size.width / imgW;
+    final scaleY = size.height / imgH;
+
+    final filtered = selectedCategory == 'all'
+        ? detections
+        : detections.where((d) => d.categoryId == selectedCategory).toList();
+
+    for (final det in filtered) {
+      if (det.bbox.length < 4) continue;
+      // Skip whole-image fallbacks [0,0,w,h] if there are other granular detections
+      if (det.bbox[0] == 0 && det.bbox[1] == 0 && det.bbox[2] >= imgW && det.bbox[3] >= imgH && filtered.length > 1) {
+        continue;
+      }
+
+      final x1 = det.bbox[0] * scaleX;
+      final y1 = det.bbox[1] * scaleY;
+      final x2 = det.bbox[2] * scaleX;
+      final y2 = det.bbox[3] * scaleY;
+      final rect = Rect.fromLTRB(x1, y1, x2, y2);
+
+      final color = det.categoryColor;
+
+      // 1. Shaded tinted fill
+      final fillPaint = Paint()
+        ..color = color.withValues(alpha: 0.20)
+        ..style = PaintingStyle.fill;
+      canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(6)), fillPaint);
+
+      // 2. High-visibility glowing border
+      final borderPaint = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.4;
+      canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(6)), borderPaint);
+
+      // 3. Corner tick accents
+      final cornerPaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.0;
+      final tick = math.min(10.0, math.min(rect.width, rect.height) / 3);
+      if (tick > 2.0) {
+        // Top-left
+        canvas.drawLine(Offset(rect.left, rect.top), Offset(rect.left + tick, rect.top), cornerPaint);
+        canvas.drawLine(Offset(rect.left, rect.top), Offset(rect.left, rect.top + tick), cornerPaint);
+        // Top-right
+        canvas.drawLine(Offset(rect.right, rect.top), Offset(rect.right - tick, rect.top), cornerPaint);
+        canvas.drawLine(Offset(rect.right, rect.top), Offset(rect.right, rect.top + tick), cornerPaint);
+        // Bottom-left
+        canvas.drawLine(Offset(rect.left, rect.bottom), Offset(rect.left + tick, rect.bottom), cornerPaint);
+        canvas.drawLine(Offset(rect.left, rect.bottom), Offset(rect.left, rect.bottom - tick), cornerPaint);
+        // Bottom-right
+        canvas.drawLine(Offset(rect.right, rect.bottom), Offset(rect.right - tick, rect.bottom), cornerPaint);
+        canvas.drawLine(Offset(rect.right, rect.bottom), Offset(rect.right, rect.bottom - tick), cornerPaint);
+      }
+
+      // 4. Floating label pill
+      final label = "${det.displayLabel} (${(det.confidence * 100).toStringAsFixed(0)}%)";
+      final textSpan = TextSpan(
+        text: label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+        ),
+      );
+      final textPainter = TextPainter(
+        text: textSpan,
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: math.max(100.0, size.width - 20));
+
+      final labelBgRect = Rect.fromLTWH(
+        math.max(2.0, rect.left),
+        math.max(2.0, rect.top - 18),
+        textPainter.width + 10,
+        17,
+      );
+      final labelBgPaint = Paint()
+        ..color = color.withValues(alpha: 0.92)
+        ..style = PaintingStyle.fill;
+      canvas.drawRRect(RRect.fromRectAndRadius(labelBgRect, const Radius.circular(5)), labelBgPaint);
+      textPainter.paint(canvas, Offset(labelBgRect.left + 5, labelBgRect.top + 1.5));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant DetectionBoxPainter oldDelegate) {
+    return oldDelegate.selectedCategory != selectedCategory ||
+        oldDelegate.detections != detections ||
+        oldDelegate.imageWidth != imageWidth ||
+        oldDelegate.imageHeight != imageHeight;
   }
 }

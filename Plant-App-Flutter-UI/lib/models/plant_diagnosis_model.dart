@@ -28,6 +28,8 @@ class PlantDiagnosisResponse {
   final List<SymptomDetection> detections;
   final bool needsUserConfirmation;
   final List<SpeciesCandidate> topCandidates;
+  final int imageWidth;
+  final int imageHeight;
 
   PlantDiagnosisResponse({
     required this.status,
@@ -53,6 +55,8 @@ class PlantDiagnosisResponse {
     this.detections = const [],
     this.needsUserConfirmation = false,
     this.topCandidates = const [],
+    this.imageWidth = 0,
+    this.imageHeight = 0,
     MultiCategoryDiagnosis? multiCategory,
     List<RuledOutCondition>? ruledOutConditions,
     List<DiagnosticClarifierQuestion>? clarifierQuestions,
@@ -209,6 +213,8 @@ class PlantDiagnosisResponse {
       detections: detections,
       needsUserConfirmation: needsUserConfirmation,
       topCandidates: topCandidates,
+      imageWidth: (json['image_width'] as num?)?.toInt() ?? 0,
+      imageHeight: (json['image_height'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -730,6 +736,58 @@ class SymptomDetection {
     'recommended_check': recommendedCheck,
     'source': source,
   };
+
+  String get categoryId {
+    final cls = class_.toLowerCase();
+    final lbl = displayLabel.toLowerCase();
+    if (cls.contains('rust') || lbl.contains('rust') || lbl.contains('pucciniales')) {
+      return 'rust';
+    }
+    if (cls == 'white_powdery_residue' ||
+        cls == 'chewed_holes_stippling' ||
+        lbl.contains('scale') ||
+        lbl.contains('mealybug') ||
+        lbl.contains('pest') ||
+        lbl.contains('insect') ||
+        lbl.contains('mite') ||
+        lbl.contains('aphid') ||
+        lbl.contains('thrip') ||
+        lbl.contains('caterpillar') ||
+        lbl.contains('chew') ||
+        lbl.contains('bite') ||
+        lbl.contains('hole') ||
+        lbl.contains('stipple')) {
+      return 'pestInsect';
+    }
+    if (cls == 'crispy_brown_edges' ||
+        lbl.contains('dehydration') ||
+        lbl.contains('water') ||
+        lbl.contains('underwatering') ||
+        lbl.contains('overwatering') ||
+        lbl.contains('drought') ||
+        lbl.contains('turgor') ||
+        lbl.contains('edema')) {
+      return 'watering';
+    }
+    if (cls == 'yellowing_chlorosis') {
+      return 'watering';
+    }
+    return 'microorganism';
+  }
+
+  Color get categoryColor {
+    switch (categoryId) {
+      case 'pestInsect':
+        return const Color(0xFFD97706); // Amber 600
+      case 'rust':
+        return const Color(0xFFEA580C); // Orange 600
+      case 'watering':
+        return const Color(0xFF0284C7); // Sky 600
+      case 'microorganism':
+      default:
+        return const Color(0xFFDC2626); // Red 600
+    }
+  }
 }
 
 class SpeciesInfo {

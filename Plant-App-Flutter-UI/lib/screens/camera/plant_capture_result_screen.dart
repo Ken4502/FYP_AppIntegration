@@ -6,7 +6,6 @@ import 'package:urbangreen/models/plant_diagnosis_model.dart';
 import 'package:urbangreen/models/plant_model.dart';
 import 'package:urbangreen/screens/camera/plant_diagnostic_screen.dart';
 import 'package:urbangreen/services/plant_service.dart';
-import 'package:urbangreen/services/plant_api_service.dart';
 
 class PlantCaptureResultScreen extends StatefulWidget {
   final XFile image;
@@ -26,171 +25,16 @@ class PlantCaptureResultScreen extends StatefulWidget {
 
 class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
   bool _isAdded = false;
-  String? _userSoilStatus;
-  SpeciesCandidate? _selectedCandidate;
-  bool _isConfirmed = false;
-  bool _isReanalyzing = false;
 
   String _getActiveSpeciesName() {
-    if (_selectedCandidate != null) {
-      if (_selectedCandidate!.displayName.isNotEmpty) {
-        return _selectedCandidate!.displayName.replaceAll('_', ' ');
-      }
-      if (_selectedCandidate!.speciesName.isNotEmpty) {
-        return _selectedCandidate!.speciesName.replaceAll('_', ' ');
-      }
-    }
     return widget.diagnosis.species.name.replaceAll('_', ' ');
   }
 
-  List<SymptomDetection> _getTriageAdjustedDetections(List<SymptomDetection> detections) {
-    if (_userSoilStatus == null) return detections;
-    return detections.map((det) {
-      final cls = det.class_.toLowerCase();
-      if (cls == 'crispy_brown_edges' ||
-          cls == 'yellowing_chlorosis' ||
-          cls == 'foliar_wilting_droop' ||
-          cls == 'wilting_drooping') {
-        List<String> newCauses;
-        String newCheck;
-        if (_userSoilStatus == 'dry') {
-          newCauses = [
-            "Underwatering / Low Humidity (Confirmed by dry soil test)",
-            "Root-ball moisture deficit & accelerated transpiration",
-            ...det.probableCauses.where((c) => !c.toLowerCase().contains("overwatering")),
-          ];
-          newCheck = "Water thoroughly until water drains from the bottom; perform a 30-min bottom soak.";
-        } else if (_userSoilStatus == 'soggy') {
-          newCauses = [
-            "Overwatering / Root Rot (Confirmed by waterlogged soil test)",
-            "Anaerobic root hypoxia and root suffocation",
-            ...det.probableCauses.where((c) => !c.toLowerCase().contains("underwatering")),
-          ];
-          newCheck = "Pause watering immediately, unblock drainage holes, and aerate potting mix.";
-        } else {
-          // damp
-          newCauses = [
-            "Soil moisture optimal (Balanced hydration)",
-            "Check ambient humidity levels or tap water mineral sensitivity",
-            "Natural lower leaf aging / environmental acclimation",
-          ];
-          newCheck = "Maintain routine care; avoid over-fertilizing.";
-        }
-        return det.copyWith(
-          probableCauses: newCauses.toSet().toList(),
-          recommendedCheck: newCheck,
-        );
-      }
-      return det;
-    }).toList();
-  }
 
-  Widget _buildSoilCheckCard(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      margin: const EdgeInsets.only(top: 14),
-      padding: const EdgeInsets.all(kDefaultPadding),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF0FDF4),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF86EFAC)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.touch_app_rounded, color: Color(0xFF16A34A), size: 22),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  "Interactive Triage: Soil Moisture Check",
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF15803D),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            "Touch the top 2 inches of soil: Is it dry, damp, or soggy?",
-            style: TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              _buildSoilChip("dry", "Dry (Crumbly)", Icons.water_drop_outlined, Colors.amber.shade800),
-              const SizedBox(width: 8),
-              _buildSoilChip("damp", "Damp (Optimal)", Icons.water_drop, Colors.green.shade700),
-              const SizedBox(width: 8),
-              _buildSoilChip("soggy", "Soggy (Wet)", Icons.waves, Colors.blue.shade800),
-            ],
-          ),
-          if (_userSoilStatus != null) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.green.shade200),
-              ),
-              child: Text(
-                _userSoilStatus == 'dry'
-                    ? "✓ Confirmed: Underwatering / Low humidity. Top probable cause updated. Recommended: Perform deep bottom-soak and increase ambient humidity."
-                    : (_userSoilStatus == 'soggy'
-                        ? "✓ Confirmed: Overwatering / Root hypoxia risk. Top probable cause updated. Recommended: Pause watering immediately, unblock drainage, and aerate potting mix."
-                        : "✓ Confirmed: Soil moisture is optimal. Top probable cause updated. Yellowing / crispy tips may be due to natural lower leaf aging or light/mineral adjustments."),
-                style: const TextStyle(fontSize: 12, color: Color(0xFF166534), fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 
-  Widget _buildSoilChip(String key, String label, IconData icon, Color color) {
-    final isSelected = _userSoilStatus == key;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _userSoilStatus = key;
-          });
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-          decoration: BoxDecoration(
-            color: isSelected ? color : Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: color.withValues(alpha: 0.5)),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, size: 18, color: isSelected ? Colors.white : color),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? Colors.white : color,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildSymptomsCard(BuildContext context, List<SymptomDetection> detections) {
     final theme = Theme.of(context);
-    final activeDetections = _getTriageAdjustedDetections(detections);
     return Container(
       margin: const EdgeInsets.only(top: 14),
       padding: const EdgeInsets.all(kDefaultPadding),
@@ -214,83 +58,16 @@ class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  "Visual Symptom Detections (${activeDetections.length})",
+                  "Visual Symptom Detections (${detections.length})",
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
-              if (_userSoilStatus != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: _userSoilStatus == 'dry'
-                        ? Colors.amber.shade100
-                        : (_userSoilStatus == 'soggy' ? Colors.blue.shade100 : Colors.green.shade100),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    "Triage: ${_userSoilStatus!.toUpperCase()}",
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: _userSoilStatus == 'dry'
-                          ? Colors.amber.shade900
-                          : (_userSoilStatus == 'soggy' ? Colors.blue.shade900 : Colors.green.shade900),
-                    ),
-                  ),
-                ),
             ],
           ),
-          if (_userSoilStatus != null) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: _userSoilStatus == 'dry'
-                    ? Colors.amber.shade50
-                    : (_userSoilStatus == 'soggy' ? Colors.blue.shade50 : Colors.green.shade50),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: _userSoilStatus == 'dry'
-                      ? Colors.amber.shade300
-                      : (_userSoilStatus == 'soggy' ? Colors.blue.shade300 : Colors.green.shade300),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _userSoilStatus == 'dry'
-                        ? Icons.water_drop_outlined
-                        : (_userSoilStatus == 'soggy' ? Icons.waves : Icons.check_circle_outline),
-                    size: 15,
-                    color: _userSoilStatus == 'dry'
-                        ? Colors.amber.shade900
-                        : (_userSoilStatus == 'soggy' ? Colors.blue.shade900 : Colors.green.shade900),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      _userSoilStatus == 'dry'
-                          ? "1-Tap Triage: Underwatering / Low Humidity set as top probable cause."
-                          : (_userSoilStatus == 'soggy'
-                              ? "1-Tap Triage: Overwatering / Root Rot set as top probable cause."
-                              : "1-Tap Triage: Optimal soil moisture confirmed."),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: _userSoilStatus == 'dry'
-                            ? Colors.amber.shade900
-                            : (_userSoilStatus == 'soggy' ? Colors.blue.shade900 : Colors.green.shade900),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
           const SizedBox(height: 10),
-          ...activeDetections.map((det) {
+          ...detections.map((det) {
             final isHigh = det.confidenceTier == 'high';
             final badgeColor = isHigh ? Colors.red.shade700 : Colors.amber.shade800;
             return Container(
@@ -333,10 +110,10 @@ class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: Colors.green.shade100,
-                            borderRadius: BorderRadius.circular(4),
+                            borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            "Whole-Plant",
+                            "Macro Check",
                             style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.green.shade800),
                           ),
                         ),
@@ -354,12 +131,10 @@ class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
                         Expanded(
                           child: Text(
                             det.probableCauses.first,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 11,
-                              fontWeight: _userSoilStatus != null ? FontWeight.bold : FontWeight.w600,
-                              color: _userSoilStatus == 'dry'
-                                  ? Colors.amber.shade900
-                                  : (_userSoilStatus == 'soggy' ? Colors.blue.shade900 : Colors.black87),
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
                             ),
                           ),
                         ),
@@ -389,253 +164,7 @@ class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
     );
   }
 
-  Future<void> _pickSecondaryAndReanalyze() async {
-    final picker = ImagePicker();
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt_rounded, color: kPrimaryColor),
-              title: const Text('Take Close-Up Photo (Camera)'),
-              onTap: () => Navigator.pop(ctx, ImageSource.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_rounded, color: kPrimaryColor),
-              title: const Text('Choose from Gallery'),
-              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
-            ),
-          ],
-        ),
-      ),
-    );
 
-    if (source == null) return;
-    final picked = await picker.pickImage(source: source, imageQuality: 90);
-    if (picked == null) return;
-
-    if (!mounted) return;
-    setState(() => _isReanalyzing = true);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Row(
-          children: [
-            SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-            SizedBox(width: 12),
-            Text('Refining identification with 2-shot multi-photo logit averaging...'),
-          ],
-        ),
-        duration: Duration(seconds: 4),
-      ),
-    );
-
-    try {
-      final updatedDiag = await PlantApiService().diagnosePlant(
-        widget.image,
-        secondaryImageFile: picked,
-      );
-      if (!mounted) return;
-      setState(() => _isReanalyzing = false);
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (ctx) => PlantCaptureResultScreen(
-            image: widget.image,
-            macroImage: picked,
-            diagnosis: updatedDiag,
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isReanalyzing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Re-analysis failed: $e'), backgroundColor: Colors.red),
-      );
-    }
-  }
-
-  Widget _buildConfirmPlantCard(BuildContext context) {
-    final theme = Theme.of(context);
-    final candidates = widget.diagnosis.topCandidates.isNotEmpty
-        ? widget.diagnosis.topCandidates.take(3).toList()
-        : widget.diagnosis.species.topCandidates.take(3).toList();
-
-    if (candidates.isEmpty) return const SizedBox.shrink();
-
-    final isConfirmed = _isConfirmed;
-    final activeSpec = _getActiveSpeciesName();
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isConfirmed ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isConfirmed ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                isConfirmed ? Icons.verified_rounded : Icons.help_outline_rounded,
-                color: isConfirmed ? const Color(0xFF16A34A) : const Color(0xFF0284C7),
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  isConfirmed ? 'Plant Confirmed by You' : 'Confirm Your Plant (Top AI Candidates)',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: isConfirmed ? const Color(0xFF166534) : const Color(0xFF0F172A),
-                  ),
-                ),
-              ),
-              if (widget.diagnosis.needsUserConfirmation && !isConfirmed)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFEF3C7),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFFDE68A)),
-                  ),
-                  child: const Text(
-                    'Tap to select',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF92400E)),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            isConfirmed
-                ? 'Selected match is active for this plant\'s profile and garden records.'
-                : 'Our botanical ensemble returned multiple close matches. Tap the best visual match or add a close-up photo:',
-            style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade700, fontSize: 11),
-          ),
-          const SizedBox(height: 12),
-          // Top Candidates List
-          ...candidates.map((cand) {
-            final candDisplayName = cand.displayName.isNotEmpty ? cand.displayName : (cand.speciesName.isNotEmpty ? cand.speciesName : cand.species);
-            final isSelected = (_selectedCandidate != null && _selectedCandidate!.speciesName == cand.speciesName) ||
-                (_selectedCandidate == null && activeSpec.toLowerCase() == candDisplayName.toLowerCase());
-
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8.0),
-              child: InkWell(
-                onTap: () {
-                  setState(() {
-                    _selectedCandidate = cand;
-                    _isConfirmed = true;
-                  });
-                },
-                borderRadius: BorderRadius.circular(12),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isSelected ? theme.colorScheme.primary.withValues(alpha: 0.1) : Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isSelected ? theme.colorScheme.primary : Colors.grey.shade300,
-                      width: isSelected ? 1.8 : 1.0,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                        color: isSelected ? theme.colorScheme.primary : Colors.grey.shade400,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              candDisplayName,
-                              style: TextStyle(
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                                fontSize: 13,
-                                color: isSelected ? theme.colorScheme.primary : const Color(0xFF1E293B),
-                              ),
-                            ),
-                            if (cand.genus.isNotEmpty || cand.family.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                [
-                                  if (cand.genus.isNotEmpty) 'Genus: ${cand.genus}',
-                                  if (cand.family.isNotEmpty) cand.family,
-                                ].join(' • '),
-                                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? theme.colorScheme.primary.withValues(alpha: 0.15)
-                              : const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '${cand.confidence.toStringAsFixed(1)}%',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: isSelected ? theme.colorScheme.primary : const Color(0xFF475569),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }),
-          const SizedBox(height: 6),
-          // Add 2nd Photo (Close-Up) Button
-          OutlinedButton.icon(
-            onPressed: _isReanalyzing ? null : _pickSecondaryAndReanalyze,
-            icon: _isReanalyzing
-                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.add_a_photo_outlined, size: 16),
-            label: Text(
-              widget.macroImage != null ? 'Retake 2nd Photo (Close-Up)' : 'Add 2nd Photo (Close-Up)',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-            ),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 38),
-              side: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.5)),
-              foregroundColor: theme.colorScheme.primary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   void _showAddToGardenSheet(BuildContext context) {
     final speciesName = _getActiveSpeciesName();
@@ -767,7 +296,7 @@ class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
               ElevatedButton.icon(
                 icon: const Icon(Icons.check_circle_rounded, color: Colors.white),
                 label: const Text(
-                  'Confirm & Save to Garden',
+                  'Save to Garden',
                   style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
                 ),
                 style: ElevatedButton.styleFrom(
@@ -966,13 +495,7 @@ class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
 
             const SizedBox(height: 16),
 
-            if (diagnosis.isPlant && (diagnosis.needsUserConfirmation || diagnosis.topCandidates.isNotEmpty || diagnosis.species.topCandidates.isNotEmpty)) ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: kDefaultPadding),
-                child: _buildConfirmPlantCard(context),
-              ),
-              const SizedBox(height: 16),
-            ],
+
 
             if (!diagnosis.isPlant) ...[
               // Non-Plant Warning Card
@@ -1235,12 +758,7 @@ class _PlantCaptureResultScreenState extends State<PlantCaptureResultScreen> {
               ),
             ),
 
-            // Soil Moisture Interactive Triage Prompt (Touch the top 2 inches of soil)
-            if (diagnosis.needsUserSoilCheck)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: kDefaultPadding),
-                child: _buildSoilCheckCard(context),
-              ),
+
 
             // Visual Symptom Detections (5-Class YOLO11 Engine)
             if (diagnosis.detections.isNotEmpty)
