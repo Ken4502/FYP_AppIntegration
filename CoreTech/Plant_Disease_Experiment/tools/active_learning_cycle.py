@@ -10,7 +10,6 @@ PhytoCare Ultra: Active Learning & Self-Improvement Loop (v3.0)
 
 import sys
 import os
-import io
 import time
 import json
 import csv
