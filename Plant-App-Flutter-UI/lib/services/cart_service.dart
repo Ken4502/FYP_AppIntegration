@@ -3,10 +3,10 @@ import 'package:flutter/foundation.dart';
 import 'package:urbangreen/models/cart_item_model.dart';
 
 class CartService {
-  final FirebaseFirestore _firestore;
+  final FirebaseFirestore? _customFirestore;
+  FirebaseFirestore get _firestore => _customFirestore ?? FirebaseFirestore.instance;
 
-  CartService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+  CartService({FirebaseFirestore? firestore}) : _customFirestore = firestore;
 
   /// Real-time stream of the user's shopping cart items from Firebase
   Stream<List<CartItem>> getCartStream(String userId) {

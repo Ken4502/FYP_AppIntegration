@@ -15,19 +15,29 @@ class PlantService extends ChangeNotifier {
   bool _isLoaded = false;
   String? _currentUserId;
 
+  User? get _currentUser {
+    try {
+      return FirebaseAuth.instance.currentUser;
+    } catch (_) {
+      return null;
+    }
+  }
+
   PlantService._internal() {
     _initAuthListener();
   }
 
   void _initAuthListener() {
-    FirebaseAuth.instance.authStateChanges().listen((user) {
-      if (user == null) {
-        clearOnLogout();
-      } else if (user.uid != _currentUserId) {
-        _currentUserId = user.uid;
-        loadForUser(user.uid);
-      }
-    });
+    try {
+      FirebaseAuth.instance.authStateChanges().listen((user) {
+        if (user == null) {
+          clearOnLogout();
+        } else if (user.uid != _currentUserId) {
+          _currentUserId = user.uid;
+          loadForUser(user.uid);
+        }
+      });
+    } catch (_) {}
   }
 
   String _storageKeyFor(String? uid) {
@@ -86,7 +96,7 @@ class PlantService extends ChangeNotifier {
 
   /// Asynchronous initialization called before runApp() in main.dart
   Future<void> init() async {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _currentUser;
     if (user != null) {
       await loadForUser(user.uid);
     } else {
@@ -95,7 +105,7 @@ class PlantService extends ChangeNotifier {
   }
 
   void _loadFromStorage() {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _currentUser;
     final key = _storageKeyFor(user?.uid);
     final savedJson = WebHardwareBridge.loadStorage(key);
     if (savedJson != null && savedJson.trim().isNotEmpty) {
@@ -114,14 +124,40 @@ class PlantService extends ChangeNotifier {
       } catch (_) {}
     }
 
-    // Empty account for new user: NO starter plants!
+    // Default starter plants in guest / unauthenticated mode or testing
     _plants.clear();
+    if (user == null) {
+      _plants.addAll([
+        Plant(
+          id: "1",
+          name: "Samantha",
+          species: "Monstera Deliciosa",
+          imageUrl: "assets/images/image_1.png",
+          description: "Thriving in the living room corner with bright indirect light. Watered every 7 days.",
+          iotDeviceId: "SmartPlant-ESP32",
+        ),
+        Plant(
+          id: "2",
+          name: "Angelica",
+          species: "Ficus Lyrata (Fiddle Leaf)",
+          imageUrl: "assets/images/image_2.png",
+          description: "Requires careful moisture balance. Sensitive to cold drafts and overwatering.",
+        ),
+        Plant(
+          id: "3",
+          name: "Bob",
+          species: "Sansevieria Trifasciata",
+          imageUrl: "assets/images/image_3.png",
+          description: "Hardy air-purifier. Very tolerant of low lighting and infrequent watering.",
+        ),
+      ]);
+    }
     _isLoaded = true;
   }
 
   void _syncToFirestore() async {
     try {
-      final user = FirebaseAuth.instance.currentUser;
+      final user = _currentUser;
       if (user != null) {
         // Sync garden summary to user profile
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
@@ -149,7 +185,7 @@ class PlantService extends ChangeNotifier {
 
   Future<void> _syncFromFirestoreIfAvailable() async {
     try {
-      final user = FirebaseAuth.instance.currentUser;
+      final user = _currentUser;
       if (user != null) {
         // 1. Fetch user-scoped plants from the root 'plants' collection
         final plantSnap = await FirebaseFirestore.instance
@@ -207,7 +243,7 @@ class PlantService extends ChangeNotifier {
 
   void _saveToStorageLocallyOnly() {
     try {
-      final user = FirebaseAuth.instance.currentUser;
+      final user = _currentUser;
       final key = _storageKeyFor(user?.uid ?? _currentUserId);
       final jsonStr = jsonEncode(_plants.map((p) => p.toJson()).toList());
       WebHardwareBridge.saveStorage(key, jsonStr);
@@ -243,7 +279,7 @@ class PlantService extends ChangeNotifier {
     _saveToStorageLocallyOnly();
     notifyListeners();
 
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _currentUser;
     if (user != null) {
       _savePlantDocToFirestore(plantToSave, user.uid);
       _syncToFirestore();
@@ -257,7 +293,7 @@ class PlantService extends ChangeNotifier {
       _saveToStorageLocallyOnly();
       notifyListeners();
 
-      final user = FirebaseAuth.instance.currentUser;
+      final user = _currentUser;
       if (user != null) {
         _savePlantDocToFirestore(plant, user.uid);
         _syncToFirestore();
@@ -287,7 +323,7 @@ class PlantService extends ChangeNotifier {
     _saveToStorageLocallyOnly();
     notifyListeners();
 
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _currentUser;
     if (user != null) {
       FirebaseFirestore.instance.collection('plants').doc(id).delete().catchError((_) {});
       if (plantToDelete != null && plantToDelete.hasIot) {
@@ -334,7 +370,7 @@ class PlantService extends ChangeNotifier {
   /// 3. Synchronizes to Cloud Firestore plants collection and iot_devices document.
   void assignDeviceToPlant({required String plantId, required String deviceId}) {
     if (!_isLoaded) _loadFromStorage();
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _currentUser;
 
     // 1. Revoke deviceId from any other plant
     for (int i = 0; i < _plants.length; i++) {
@@ -353,16 +389,15 @@ class PlantService extends ChangeNotifier {
       final targetPlant = _plants[targetIndex];
       if (user != null) {
         _savePlantDocToFirestore(targetPlant, user.uid);
+        // Link probe in Cloud Firestore iot_devices
+        IotFirestoreService().linkPlant(
+          deviceId,
+          plantId: targetPlant.id,
+          plantName: targetPlant.name,
+          plantImage: targetPlant.imageUrl,
+          optimalMinMoisture: targetPlant.optimalMinMoisture,
+        );
       }
-
-      // Link probe in Cloud Firestore iot_devices
-      IotFirestoreService().linkPlant(
-        deviceId,
-        plantId: targetPlant.id,
-        plantName: targetPlant.name,
-        plantImage: targetPlant.imageUrl,
-        optimalMinMoisture: targetPlant.optimalMinMoisture,
-      );
     }
 
     _saveToStorageLocallyOnly();
@@ -373,16 +408,16 @@ class PlantService extends ChangeNotifier {
   /// Unlinks any IoT device from a specific plant.
   void unassignDeviceFromPlant(String plantId) {
     if (!_isLoaded) _loadFromStorage();
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _currentUser;
     final index = _plants.indexWhere((p) => p.id == plantId);
     if (index != -1) {
       final oldDeviceId = _plants[index].iotDeviceId;
       _plants[index].iotDeviceId = null;
       if (user != null) {
         _savePlantDocToFirestore(_plants[index], user.uid);
-      }
-      if (oldDeviceId != null && oldDeviceId.isNotEmpty) {
-        IotFirestoreService().unlinkPlant(oldDeviceId);
+        if (oldDeviceId != null && oldDeviceId.isNotEmpty) {
+          IotFirestoreService().unlinkPlant(oldDeviceId);
+        }
       }
       _saveToStorageLocallyOnly();
       notifyListeners();
@@ -393,7 +428,7 @@ class PlantService extends ChangeNotifier {
   /// Unlinks a specific device from whatever plant it was assigned to.
   void unassignDevice(String deviceId, {bool notifyDevice = true}) {
     if (!_isLoaded) _loadFromStorage();
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _currentUser;
     bool changed = false;
     for (int i = 0; i < _plants.length; i++) {
       if (_plants[i].iotDeviceId == deviceId) {
@@ -404,7 +439,7 @@ class PlantService extends ChangeNotifier {
         changed = true;
       }
     }
-    if (notifyDevice) {
+    if (user != null && notifyDevice) {
       IotFirestoreService().unlinkPlant(deviceId);
     }
     if (changed) {

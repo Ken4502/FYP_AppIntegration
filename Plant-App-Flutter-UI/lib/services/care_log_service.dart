@@ -72,19 +72,29 @@ class CareLogService extends ChangeNotifier {
   bool _isLoaded = false;
   String? _currentUserId;
 
+  User? get _currentUser {
+    try {
+      return FirebaseAuth.instance.currentUser;
+    } catch (_) {
+      return null;
+    }
+  }
+
   CareLogService._internal() {
     _initAuthListener();
   }
 
   void _initAuthListener() {
-    FirebaseAuth.instance.authStateChanges().listen((user) {
-      if (user == null) {
-        clearOnLogout();
-      } else if (user.uid != _currentUserId) {
-        _currentUserId = user.uid;
-        loadForUser(user.uid);
-      }
-    });
+    try {
+      FirebaseAuth.instance.authStateChanges().listen((user) {
+        if (user == null) {
+          clearOnLogout();
+        } else if (user.uid != _currentUserId) {
+          _currentUserId = user.uid;
+          loadForUser(user.uid);
+        }
+      });
+    } catch (_) {}
   }
 
   String _storageKeyFor(String? uid) {
@@ -128,7 +138,7 @@ class CareLogService extends ChangeNotifier {
   }
 
   Future<void> init() async {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _currentUser;
     if (user != null) {
       await loadForUser(user.uid);
     } else {
@@ -138,7 +148,7 @@ class CareLogService extends ChangeNotifier {
 
   void _loadFromStorage() {
     _isLoaded = true;
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _currentUser;
     final key = _storageKeyFor(user?.uid ?? _currentUserId);
     final savedJson = WebHardwareBridge.loadStorage(key);
     if (savedJson != null && savedJson.trim().isNotEmpty) {
@@ -150,17 +160,78 @@ class CareLogService extends ChangeNotifier {
             _wateringLogs.add(WateringLog.fromJson(item));
           }
         }
+        if (_wateringLogs.isNotEmpty) return;
       } catch (e) {
         debugPrint('CareLogService load error: $e');
       }
-    } else {
-      _wateringLogs.clear();
     }
+
+    _seedInitialLogs();
+  }
+
+  void _seedInitialLogs() {
+    final now = DateTime.now();
+    _wateringLogs.clear();
+    _wateringLogs.addAll([
+      WateringLog(
+        id: 'seed_01',
+        plantId: '1',
+        plantName: 'Samantha',
+        species: 'Monstera Deliciosa',
+        imageUrl: 'assets/images/image_1.png',
+        timestamp: now.subtract(const Duration(hours: 3)),
+        amountMl: 250,
+        mode: 'Hardware Pump Pulse',
+        moistureBefore: 30,
+        moistureAfter: 65,
+        notes: 'IoT automatic hydration routine',
+      ),
+      WateringLog(
+        id: 'seed_02',
+        plantId: '2',
+        plantName: 'Angelica',
+        species: 'Ficus Lyrata (Fiddle Leaf)',
+        imageUrl: 'assets/images/image_2.png',
+        timestamp: now.subtract(const Duration(days: 1, hours: 2)),
+        amountMl: 350,
+        mode: 'Manual Hydration',
+        moistureBefore: 22,
+        moistureAfter: 55,
+        notes: 'Deep pot soaking',
+      ),
+      WateringLog(
+        id: 'seed_03',
+        plantId: '3',
+        plantName: 'Bob',
+        species: 'Sansevieria Trifasciata',
+        imageUrl: 'assets/images/image_3.png',
+        timestamp: now.subtract(const Duration(days: 3, hours: 5)),
+        amountMl: 150,
+        mode: 'Manual Hydration',
+        moistureBefore: 18,
+        moistureAfter: 48,
+        notes: 'Light soil spritz',
+      ),
+      WateringLog(
+        id: 'seed_04',
+        plantId: '1',
+        plantName: 'Samantha',
+        species: 'Monstera Deliciosa',
+        imageUrl: 'assets/images/image_1.png',
+        timestamp: now.subtract(const Duration(days: 5, hours: 4)),
+        amountMl: 250,
+        mode: 'Hardware Pump Pulse',
+        moistureBefore: 28,
+        moistureAfter: 62,
+        notes: 'Hardware pulse actuated',
+      ),
+    ]);
+    _saveToStorage();
   }
 
   void _saveToStorage() {
     try {
-      final user = FirebaseAuth.instance.currentUser;
+      final user = _currentUser;
       final key = _storageKeyFor(user?.uid ?? _currentUserId);
       final jsonStr = jsonEncode(_wateringLogs.map((l) => l.toJson()).toList());
       WebHardwareBridge.saveStorage(key, jsonStr);

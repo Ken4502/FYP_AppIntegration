@@ -34,13 +34,15 @@ class IotPresenceWatchdogService {
 
     debugPrint('[IoT Watchdog] 🛡️ Presence watchdog service initialized.');
 
-    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
-      if (user == null) {
-        _stopWatching();
-      } else {
-        _startWatching(user.uid);
-      }
-    });
+    try {
+      _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+        if (user == null) {
+          _stopWatching();
+        } else {
+          _startWatching(user.uid);
+        }
+      });
+    } catch (_) {}
   }
 
   void _startWatching(String uid) {

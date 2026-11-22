@@ -12,10 +12,16 @@ class IotFirestoreService {
   factory IotFirestoreService() => _instance;
   IotFirestoreService._internal();
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
+  FirebaseAuth get _auth => FirebaseAuth.instance;
 
-  String? get currentUserId => _auth.currentUser?.uid;
+  String? get currentUserId {
+    try {
+      return _auth.currentUser?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
 
   CollectionReference<Map<String, dynamic>> get _devicesCol =>
       _firestore.collection('iot_devices');
@@ -459,71 +465,75 @@ class IotFirestoreService {
     int? optimalMinMoisture,
     int? optimalMaxMoisture,
   }) async {
-    // 1. Completely purge historical logs from the previous plant
-    await clearDeviceLogs(deviceId);
+    try {
+      // 1. Completely purge historical logs from the previous plant
+      await clearDeviceLogs(deviceId);
 
-    // 2. Reset device functionalities to safe factory defaults for the new plant
-    final low = optimalMinMoisture ?? 25;
-    final high = optimalMaxMoisture ?? 45;
+      // 2. Reset device functionalities to safe factory defaults for the new plant
+      final low = optimalMinMoisture ?? 25;
+      final high = optimalMaxMoisture ?? 45;
 
-    await _devicesCol.doc(deviceId).set({
-      'linkedPlantId': plantId,
-      'linkedPlantName': plantName,
-      'linkedPlantImage': plantImage,
-      'mode': 'MANUAL',
-      'autoWaterEnabled': false,
-      'isPumpRunning': false,
-      'lowThreshold': low,
-      'lowMoistureThreshold': low,
-      'highThreshold': high,
-      'highMoistureThreshold': high,
-      'isLowMoistureAlertIgnored': false,
-      'lowMoistureAlwaysIgnored': false,
-      'lowMoistureIgnoredUntil': null,
-      'lastAlertSentAt': null,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+      await _devicesCol.doc(deviceId).set({
+        'linkedPlantId': plantId,
+        'linkedPlantName': plantName,
+        'linkedPlantImage': plantImage,
+        'mode': 'MANUAL',
+        'autoWaterEnabled': false,
+        'isPumpRunning': false,
+        'lowThreshold': low,
+        'lowMoistureThreshold': low,
+        'highThreshold': high,
+        'highMoistureThreshold': high,
+        'isLowMoistureAlertIgnored': false,
+        'lowMoistureAlwaysIgnored': false,
+        'lowMoistureIgnoredUntil': null,
+        'lastAlertSentAt': null,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
-    // 3. Add clean initial log for the newly linked plant
-    await addDeviceLog(
-      deviceId,
-      title: 'Specimen Assigned: $plantName',
-      detail: 'Probe linked. Previous logs wiped and functionalities reset to default manual care ($low% - $high%).',
-      type: IotLogType.system,
-    );
+      // 3. Add clean initial log for the newly linked plant
+      await addDeviceLog(
+        deviceId,
+        title: 'Specimen Assigned: $plantName',
+        detail: 'Probe linked. Previous logs wiped and functionalities reset to default manual care ($low% - $high%).',
+        type: IotLogType.system,
+      );
+    } catch (_) {}
   }
 
   /// Unlink current plant.
   /// Completely purges all previous logs and restores device functionalities to clean defaults.
   Future<void> unlinkPlant(String deviceId) async {
-    // 1. Purge all previous logs
-    await clearDeviceLogs(deviceId);
+    try {
+      // 1. Purge all previous logs
+      await clearDeviceLogs(deviceId);
 
-    // 2. Revert device functionalities to clean defaults
-    await _devicesCol.doc(deviceId).set({
-      'linkedPlantId': null,
-      'linkedPlantName': null,
-      'linkedPlantImage': null,
-      'mode': 'MANUAL',
-      'autoWaterEnabled': false,
-      'isPumpRunning': false,
-      'lowThreshold': 25,
-      'lowMoistureThreshold': 25,
-      'highThreshold': 45,
-      'highMoistureThreshold': 45,
-      'isLowMoistureAlertIgnored': false,
-      'lowMoistureAlwaysIgnored': false,
-      'lowMoistureIgnoredUntil': null,
-      'lastAlertSentAt': null,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+      // 2. Revert device functionalities to clean defaults
+      await _devicesCol.doc(deviceId).set({
+        'linkedPlantId': null,
+        'linkedPlantName': null,
+        'linkedPlantImage': null,
+        'mode': 'MANUAL',
+        'autoWaterEnabled': false,
+        'isPumpRunning': false,
+        'lowThreshold': 25,
+        'lowMoistureThreshold': 25,
+        'highThreshold': 45,
+        'highMoistureThreshold': 45,
+        'isLowMoistureAlertIgnored': false,
+        'lowMoistureAlwaysIgnored': false,
+        'lowMoistureIgnoredUntil': null,
+        'lastAlertSentAt': null,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
-    await addDeviceLog(
-      deviceId,
-      title: 'Plant Unlinked',
-      detail: 'Specimen unlinked. All previous logs cleared and functionalities reverted to default configuration.',
-      type: IotLogType.system,
-    );
+      await addDeviceLog(
+        deviceId,
+        title: 'Plant Unlinked',
+        detail: 'Specimen unlinked. All previous logs cleared and functionalities reverted to default configuration.',
+        type: IotLogType.system,
+      );
+    } catch (_) {}
   }
 
   /// Delete all activity and watering logs in `iot_devices/{deviceId}/logs`

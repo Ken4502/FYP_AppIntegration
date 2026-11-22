@@ -43,8 +43,8 @@ class IotProvisioningService {
   static const String statusEndpoint = 'http://$softApIp/status';
   static const String scanEndpoint = 'http://$softApIp/scan';
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
+  FirebaseAuth get _auth => FirebaseAuth.instance;
 
   /// Detect whether the phone is connected to the ESP32 SoftAP hotspot
   Future<Map<String, dynamic>?> checkHotspotStatus({
