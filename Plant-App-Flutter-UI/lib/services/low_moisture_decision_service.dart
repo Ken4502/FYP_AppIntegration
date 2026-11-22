@@ -121,17 +121,9 @@ class LowMoistureDecisionService {
 
     // Guardrail: If this IoT probe is unassigned (not linked to any plant in the garden),
     // do NOT fire plant hydration alerts for a probe measuring room air!
-    if (plant == null && !force) {
+    if (plant == null) {
       return;
     }
-
-    plant ??= Plant(
-      id: 'specimen_${device.id}',
-      name: device.name,
-      species: 'Monitored Specimen',
-      imageUrl: 'assets/images/image_1.png',
-      iotDeviceId: device.id,
-    );
 
     final int critMin = plant.criticalMinMoisture;
     final int optMin = plant.optimalMinMoisture;

@@ -123,11 +123,26 @@ void main() {
     final plantService = PlantService();
 
     setUp(() {
-      // Clean test plants
-      final plants = plantService.myPlants;
-      for (final p in plants) {
-        plantService.unassignDeviceFromPlant(p.id);
-      }
+      // Clean and seed test plants specifically for these invariant tests
+      plantService.clearOnLogout();
+      plantService.addPlant(Plant(
+        id: "1",
+        name: "Samantha",
+        species: "Monstera Deliciosa",
+        imageUrl: "assets/images/image_1.png",
+      ));
+      plantService.addPlant(Plant(
+        id: "2",
+        name: "Angelica",
+        species: "Ficus Lyrata (Fiddle Leaf)",
+        imageUrl: "assets/images/image_2.png",
+      ));
+      plantService.addPlant(Plant(
+        id: "3",
+        name: "Bob",
+        species: "Sansevieria Trifasciata",
+        imageUrl: "assets/images/image_3.png",
+      ));
     });
 
     test('assignDeviceToPlant enforces exactly 1 device to 1 plant', () {
@@ -330,6 +345,14 @@ void main() {
         lowMoistureAlertEnabled: true,
         lowMoistureThreshold: 25,
       );
+      final plantService = PlantService();
+      plantService.addPlant(Plant(
+        id: 'plant-for-manual-probe',
+        name: 'Manual Test Specimen',
+        species: 'Monstera Deliciosa',
+        imageUrl: 'assets/images/image_1.png',
+        iotDeviceId: 'ESP32-MANUAL-ON',
+      ));
       await decisionService.dispatchLowMoistureAlert(
         device: manualEnabledDevice,
         currentMoisture: 15,

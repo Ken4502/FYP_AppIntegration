@@ -167,7 +167,8 @@ void main() {
         expect(restored.lowMoistureThreshold, equals(original.lowMoistureThreshold));
         expect(restored.autoWaterEnabled, equals(original.autoWaterEnabled));
         expect(restored.wifiSsid, equals(original.wifiSsid));
-        expect(restored.moistureLevel, equals(42.5));
+        expect(restored.moisturePercentInt, equals(43));
+        expect(restored.moistureLevel, equals(0.425));
       });
     }
 

@@ -124,34 +124,8 @@ class PlantService extends ChangeNotifier {
       } catch (_) {}
     }
 
-    // Default starter plants in guest / unauthenticated mode or testing
+    // Empty account for new user: NO starter plants!
     _plants.clear();
-    if (user == null) {
-      _plants.addAll([
-        Plant(
-          id: "1",
-          name: "Samantha",
-          species: "Monstera Deliciosa",
-          imageUrl: "assets/images/image_1.png",
-          description: "Thriving in the living room corner with bright indirect light. Watered every 7 days.",
-          iotDeviceId: "SmartPlant-ESP32",
-        ),
-        Plant(
-          id: "2",
-          name: "Angelica",
-          species: "Ficus Lyrata (Fiddle Leaf)",
-          imageUrl: "assets/images/image_2.png",
-          description: "Requires careful moisture balance. Sensitive to cold drafts and overwatering.",
-        ),
-        Plant(
-          id: "3",
-          name: "Bob",
-          species: "Sansevieria Trifasciata",
-          imageUrl: "assets/images/image_3.png",
-          description: "Hardy air-purifier. Very tolerant of low lighting and infrequent watering.",
-        ),
-      ]);
-    }
     _isLoaded = true;
   }
 

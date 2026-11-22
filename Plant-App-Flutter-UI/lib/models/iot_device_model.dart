@@ -509,15 +509,19 @@ class IotDevice {
   }
 
   factory IotDevice.fromMap(Map<String, dynamic> map) {
-    // Robust parsing for moisture
+    // Robust parsing for moisture: always normalize to fraction 0.0 - 1.0
     double parsedMoisture = 0.0;
     if (map['moistureLevel'] is num) {
-      parsedMoisture = (map['moistureLevel'] as num).toDouble();
+      final double val = (map['moistureLevel'] as num).toDouble();
+      parsedMoisture = val > 1.0 ? (val / 100.0) : val;
     } else if (map['moisturePercent'] is num) {
-      parsedMoisture = (map['moisturePercent'] as num).toDouble();
+      final double val = (map['moisturePercent'] as num).toDouble();
+      parsedMoisture = val > 1.0 ? (val / 100.0) : val;
     } else if (map['moisture'] is num) {
-      parsedMoisture = (map['moisture'] as num).toDouble();
+      final double val = (map['moisture'] as num).toDouble();
+      parsedMoisture = val > 1.0 ? (val / 100.0) : val;
     }
+    parsedMoisture = parsedMoisture.clamp(0.0, 1.0);
 
     // Robust parsing for raw ADC
     int parsedRawAdc = 3200;

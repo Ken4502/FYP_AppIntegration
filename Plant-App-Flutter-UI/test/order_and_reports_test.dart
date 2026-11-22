@@ -70,9 +70,30 @@ void main() {
   });
 
   group('CareLogService & Hydration Analytics Tests', () {
-    test('CareLogService seeds starter logs and calculates total weekly volume', () async {
+    test('CareLogService records hydration logs and calculates total weekly volume', () async {
       final careLogService = CareLogService();
       await careLogService.init();
+      careLogService.clearLogs();
+
+      final now = DateTime.now();
+      await careLogService.logWatering(
+        plantId: '1',
+        plantName: 'Samantha',
+        species: 'Monstera Deliciosa',
+        imageUrl: 'assets/images/image_1.png',
+        amountMl: 250,
+        mode: 'Hardware Pump Pulse',
+        timestamp: now.subtract(const Duration(hours: 3)),
+      );
+      await careLogService.logWatering(
+        plantId: '2',
+        plantName: 'Angelica',
+        species: 'Ficus Lyrata (Fiddle Leaf)',
+        imageUrl: 'assets/images/image_2.png',
+        amountMl: 350,
+        mode: 'Manual Hydration',
+        timestamp: now.subtract(const Duration(days: 1)),
+      );
 
       expect(careLogService.wateringLogs.isNotEmpty, true);
       final weeklyVol = careLogService.totalWeeklyVolumeMl;
