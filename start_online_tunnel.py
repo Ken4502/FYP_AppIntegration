@@ -108,9 +108,9 @@ def main():
         if cf_log_path.exists():
             try:
                 content = cf_log_path.read_text(encoding="utf-8", errors="ignore")
-                match = url_pattern.search(content)
-                if match:
-                    tunnel_url = match.group(0)
+                matches = url_pattern.findall(content)
+                if matches:
+                    tunnel_url = matches[-1]
                     break
             except Exception:
                 pass
