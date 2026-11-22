@@ -51,11 +51,13 @@ def main():
         "--reload"
     ]
     
+    backend_log_path = APP_DIR / "backend.log"
+    backend_log_file = open(backend_log_path, "w", encoding="utf-8")
     backend_proc = subprocess.Popen(
         backend_cmd,
         cwd=str(disease_dir),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
+        stdout=backend_log_file,
+        stderr=subprocess.STDOUT
     )
 
     # 2. Wait for backend port 8001 to become active
@@ -116,6 +118,9 @@ def main():
 
     if tunnel_url:
         with open(URL_FILE, "w", encoding="utf-8") as f:
+            f.write(tunnel_url.strip() + "\n")
+        active_url_file = APP_DIR / "active_server_url.txt"
+        with open(active_url_file, "w", encoding="utf-8") as f:
             f.write(tunnel_url.strip() + "\n")
 
         print()
